@@ -78,7 +78,7 @@ impl ToolRegistry {
 
         if self.tools.contains_key(&tool_name) {
             return Err(ToolError::RegistryError {
-                message: format!("Tool '{}' is already registered", tool_name),
+                message: format!("Tool '{tool_name}' is already registered"),
             });
         }
 
@@ -173,7 +173,7 @@ impl ToolRegistry {
         if let Err(validation_error) = tool_entry.definition.validate_input(&tool_use.input) {
             return Ok(ToolResult::error(
                 tool_use.id.clone(),
-                format!("Validation failed: {}", validation_error),
+                format!("Validation failed: {validation_error}"),
             ));
         }
 
@@ -181,7 +181,7 @@ impl ToolRegistry {
         if let Err(custom_error) = tool_entry.implementation.validate_input(&tool_use.input) {
             return Ok(ToolResult::error(
                 tool_use.id.clone(),
-                format!("Custom validation failed: {}", custom_error),
+                format!("Custom validation failed: {custom_error}"),
             ));
         }
 

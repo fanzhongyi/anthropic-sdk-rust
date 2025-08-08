@@ -394,7 +394,7 @@ impl MessageStream {
     fn on(self, event_type: EventType, handler: EventHandler) -> Self {
         {
             let mut handlers = self.event_handlers.lock().unwrap();
-            handlers.entry(event_type).or_insert_with(Vec::new).push(handler);
+            handlers.entry(event_type).or_default().push(handler);
         }
         self
     }
@@ -647,7 +647,7 @@ impl Stream for MessageStream {
             std::task::Poll::Ready(Some(Err(err))) => {
                 // Handle any broadcast stream errors
                 std::task::Poll::Ready(Some(Err(AnthropicError::StreamError(
-                    format!("Stream error: {}", err)
+                    format!("Stream error: {err}")
                 ))))
             }
             std::task::Poll::Ready(None) => {

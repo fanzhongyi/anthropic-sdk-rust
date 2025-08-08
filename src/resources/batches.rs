@@ -54,7 +54,7 @@ impl BatchesResource {
     pub async fn get(&self, batch_id: &str) -> Result<MessageBatch> {
         let response = self
             .http_client
-            .get(&format!("/v1/messages/batches/{}", batch_id))
+            .get(&format!("/v1/messages/batches/{batch_id}"))
             .send()
             .await?;
 
@@ -102,7 +102,7 @@ impl BatchesResource {
     pub async fn cancel(&self, batch_id: &str) -> Result<MessageBatch> {
         let response = self
             .http_client
-            .post(&format!("/v1/messages/batches/{}/cancel", batch_id))
+            .post(&format!("/v1/messages/batches/{batch_id}/cancel"))
             .send()
             .await?;
 
@@ -137,7 +137,7 @@ impl BatchesResource {
         // Download the results file
         let response = self
             .http_client
-            .get(&format!("/v1/files/{}/content", output_file_id))
+            .get(&format!("/v1/files/{output_file_id}/content"))
             .send()
             .await?;
 
@@ -148,7 +148,7 @@ impl BatchesResource {
         for line in content.lines() {
             if !line.trim().is_empty() {
                 let result: BatchResult = serde_json::from_str(line)
-                    .map_err(|e| AnthropicError::Other(format!("Failed to parse result: {}", e)))?;
+                    .map_err(|e| AnthropicError::Other(format!("Failed to parse result: {e}")))?;
                 results.push(result);
             }
         }

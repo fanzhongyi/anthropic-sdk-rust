@@ -108,13 +108,13 @@ impl From<reqwest::Error> for AnthropicError {
 
 impl From<serde_json::Error> for AnthropicError {
     fn from(err: serde_json::Error) -> Self {
-        Self::Other(format!("JSON serialization/deserialization error: {}", err))
+        Self::Other(format!("JSON serialization/deserialization error: {err}"))
     }
 }
 
 impl From<chrono::OutOfRangeError> for AnthropicError {
     fn from(err: chrono::OutOfRangeError) -> Self {
-        Self::Other(format!("Date/time out of range error: {}", err))
+        Self::Other(format!("Date/time out of range error: {err}"))
     }
 }
 

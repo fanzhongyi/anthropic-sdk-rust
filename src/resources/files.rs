@@ -107,7 +107,7 @@ impl FilesResource {
     pub async fn get(&self, file_id: &str) -> Result<FileObject> {
         let response = self
             .http_client
-            .get(&format!("/v1/files/{}", file_id))
+            .get(&format!("/v1/files/{file_id}"))
             .send()
             .await?;
 
@@ -161,7 +161,7 @@ impl FilesResource {
     pub async fn download(&self, file_id: &str) -> Result<FileDownload> {
         let response = self
             .http_client
-            .get(&format!("/v1/files/{}/content", file_id))
+            .get(&format!("/v1/files/{file_id}/content"))
             .send()
             .await?;
 
@@ -178,7 +178,7 @@ impl FilesResource {
             .and_then(|v| v.to_str().ok());
 
         let filename = extract_filename_from_disposition(content_disposition)
-            .unwrap_or_else(|| format!("file_{}", file_id));
+            .unwrap_or_else(|| format!("file_{file_id}"));
 
         let content = response.bytes().await?;
         let size = content.len() as u64;
@@ -204,7 +204,7 @@ impl FilesResource {
     pub async fn delete(&self, file_id: &str) -> Result<FileObject> {
         let response = self
             .http_client
-            .delete(&format!("/v1/files/{}", file_id))
+            .delete(&format!("/v1/files/{file_id}"))
             .send()
             .await?;
 
@@ -262,8 +262,7 @@ impl FilesResource {
 
             if file.status.has_error() {
                 return Err(AnthropicError::Other(format!(
-                    "File processing failed for file {}",
-                    file_id
+                    "File processing failed for file {file_id}"
                 )));
             }
 

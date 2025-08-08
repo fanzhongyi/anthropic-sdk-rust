@@ -4,7 +4,6 @@ use anthropic_sdk::{
 };
 use dotenvy::dotenv;
 use std::time::Duration;
-use tokio::time::timeout;
 
 /// Helper function to extract text content from response
 fn extract_text_from_content(content: &[ContentBlock]) -> String {
@@ -30,7 +29,7 @@ fn create_custom_client() -> Option<Anthropic> {
         .with_base_url(base_url)
         .with_timeout(Duration::from_secs(45));
         
-    Some(Anthropic::with_config(config).ok()?)
+    Anthropic::with_config(config).ok()
 }
 
 /// Get model name from environment or use default
@@ -61,7 +60,7 @@ async fn test_basic_message_creation() {
     
     let response = client.messages()
         .create(
-            MessageCreateBuilder::new(&get_model_name(), 100)
+            MessageCreateBuilder::new(get_model_name(), 100)
                 .user("Hello! Please respond with 'Integration test successful' if you receive this.")
                 .build()
         )
@@ -75,10 +74,10 @@ async fn test_basic_message_creation() {
             assert!(msg.usage.output_tokens > 0, "Should have output tokens");
             
             let text = extract_text_from_content(&msg.content);
-            println!("✅ Response: {}", text);
+            println!("✅ Response: {text}");
             println!("📊 Usage: {} input, {} output tokens", msg.usage.input_tokens, msg.usage.output_tokens);
         }
-        Err(e) => panic!("Basic message creation failed: {}", e),
+        Err(e) => panic!("Basic message creation failed: {e}"),
     }
 }
 
@@ -90,7 +89,7 @@ async fn test_system_prompt() {
     
     let response = client.messages()
         .create(
-            MessageCreateBuilder::new(&get_model_name(), 150)
+            MessageCreateBuilder::new(get_model_name(), 150)
                 .system("You are a helpful math tutor. Always show your work and be precise.")
                 .user("What is 15 * 23? Please show the calculation.")
                 .build()
@@ -100,13 +99,13 @@ async fn test_system_prompt() {
     match response {
         Ok(msg) => {
             let text = extract_text_from_content(&msg.content);
-            println!("✅ Math response: {}", text);
+            println!("✅ Math response: {text}");
             
             // Verify it contains mathematical calculation
             assert!(text.contains("15") || text.contains("23") || text.contains("345"), 
                 "Response should contain mathematical elements");
         }
-        Err(e) => panic!("System prompt test failed: {}", e),
+        Err(e) => panic!("System prompt test failed: {e}"),
     }
 }
 
@@ -119,7 +118,7 @@ async fn test_temperature_parameters() {
     // Test with low temperature (more deterministic)
     let response_low = client.messages()
         .create(
-            MessageCreateBuilder::new(&get_model_name(), 100)
+            MessageCreateBuilder::new(get_model_name(), 100)
                 .user("Write the word 'hello' in exactly 3 different languages.")
                 .temperature(0.1)
                 .build()
@@ -130,7 +129,7 @@ async fn test_temperature_parameters() {
     // Test with high temperature (more creative)
     let response_high = client.messages()
         .create(
-            MessageCreateBuilder::new(&get_model_name(), 100)
+            MessageCreateBuilder::new(get_model_name(), 100)
                 .user("Write a very short creative poem about the color blue.")
                 .temperature(0.9)
                 .build()
@@ -141,8 +140,8 @@ async fn test_temperature_parameters() {
     let text_low = extract_text_from_content(&response_low.content);
     let text_high = extract_text_from_content(&response_high.content);
     
-    println!("✅ Low temp (0.1): {}", text_low);
-    println!("✅ High temp (0.9): {}", text_high);
+    println!("✅ Low temp (0.1): {text_low}");
+    println!("✅ High temp (0.9): {text_high}");
     
     assert!(!text_low.is_empty(), "Low temperature response should not be empty");
     assert!(!text_high.is_empty(), "High temperature response should not be empty");
@@ -157,7 +156,7 @@ async fn test_max_tokens_limits() {
     // Test with very low max_tokens
     let response = client.messages()
         .create(
-            MessageCreateBuilder::new(&get_model_name(), 20)
+            MessageCreateBuilder::new(get_model_name(), 20)
                 .user("Write a long essay about artificial intelligence and its impact on society.")
                 .build()
         )
@@ -177,7 +176,7 @@ async fn test_streaming_response() {
     println!("📡 Starting stream request...");
     
     let stream = client.messages().create_stream(
-        MessageCreateBuilder::new(&get_model_name(), 100)
+        MessageCreateBuilder::new(get_model_name(), 100)
             .user("Write a very short haiku about technology streaming")
             .build()
     ).await;
@@ -200,18 +199,18 @@ async fn test_streaming_response() {
                                 None
                             }
                         }) {
-                            println!("📝 Final streamed text: {}", text);
+                            println!("📝 Final streamed text: {text}");
                         }
                     }
                 }
                 Err(e) => {
-                    println!("❌ Streaming failed: {}", e);
+                    println!("❌ Streaming failed: {e}");
                     println!("ℹ️  If this fails, check your Bearer token and network connection");
                 }
             }
         }
         Err(e) => {
-            println!("❌ Failed to create stream: {}", e);
+            println!("❌ Failed to create stream: {e}");
             println!("ℹ️  Check Bearer token and custom Gateway configuration");
         }
     }
@@ -240,7 +239,7 @@ async fn test_bearer_token_authentication() {
     
     let response = bearer_client.messages()
         .create(
-            MessageCreateBuilder::new(&get_model_name(), 100)
+            MessageCreateBuilder::new(get_model_name(), 100)
                 .user("Confirm Bearer token authentication is working.")
                 .build()
         )
@@ -259,7 +258,7 @@ async fn test_comprehensive_feature_set() {
     
     let response = client.messages()
         .create(
-            MessageCreateBuilder::new(&get_model_name(), 300)
+            MessageCreateBuilder::new(get_model_name(), 300)
                 .system("You are a creative writing assistant. Write in a specific, engaging style.")
                 .user("Write a very brief story about a robot discovering music for the first time.")
                 .temperature(0.7)
@@ -271,7 +270,7 @@ async fn test_comprehensive_feature_set() {
         .expect("Comprehensive feature test should succeed");
     
     let text = extract_text_from_content(&response.content);
-    println!("✅ Creative response: {}", text);
+    println!("✅ Creative response: {text}");
     
     // Verify response characteristics
     assert!(!text.is_empty(), "Response should not be empty");

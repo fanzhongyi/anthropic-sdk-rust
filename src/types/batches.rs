@@ -151,6 +151,7 @@ impl BatchRequest {
                 max_tokens,
                 messages: Vec::new(),
                 system: None,
+                thinking: None,
                 temperature: None,
                 top_p: None,
                 top_k: None,
@@ -198,7 +199,7 @@ impl BatchRequestBuilder {
     
     /// Set the system prompt for the request
     pub fn system(mut self, system: impl Into<String>) -> Self {
-        self.body.system = Some(system.into());
+        self.body.system = Some(crate::types::messages::SystemParam::Text(system.into()));
         self
     }
     

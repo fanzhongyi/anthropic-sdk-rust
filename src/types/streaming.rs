@@ -68,6 +68,37 @@ pub enum MessageStreamEvent {
         /// Index of the content block that finished
         index: usize,
     },
+
+    /// Event when thinking content is generated (independent event).
+    ///
+    /// This provides complete thinking snapshots during extended reasoning.
+    #[serde(rename = "thinking")]
+    Thinking {
+        /// The thinking content
+        thinking: String,
+        /// Snapshot of complete thinking so far
+        snapshot: String,
+    },
+
+    /// Event when signature is updated (independent event).
+    ///
+    /// This provides signature updates for thinking blocks.
+    #[serde(rename = "signature")]
+    Signature {
+        /// The signature string
+        signature: String,
+    },
+
+    /// Event when text content is generated (independent event).
+    ///
+    /// This provides complete text snapshots during generation.
+    #[serde(rename = "text")]
+    Text {
+        /// The text content
+        text: String,
+        /// Snapshot of complete text so far
+        snapshot: String,
+    },
 }
 
 /// Delta updates for message-level information during streaming.
@@ -92,6 +123,9 @@ pub struct MessageDeltaUsage {
     pub cache_creation_input_tokens: Option<u32>,
     /// Cumulative cache read tokens (may be null)
     pub cache_read_input_tokens: Option<u32>,
+    /// Detailed cache creation breakdown (for 1-hour cache beta)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation: Option<crate::types::shared::CacheCreation>,
     /// Server tool usage statistics (may be null)
     pub server_tool_use: Option<ServerToolUsage>,
 }
@@ -243,6 +277,8 @@ mod tests {
                     server_tool_use: None,
                     service_tier: None,
                 },
+                    cache_creation: None,
+                    cache_creation: None,
                 request_id: None,
             },
         };
@@ -278,6 +314,7 @@ mod tests {
                 input_tokens: Some(10),
                 cache_creation_input_tokens: None,
                 cache_read_input_tokens: None,
+                cache_creation: None,
                 server_tool_use: None,
             },
         };

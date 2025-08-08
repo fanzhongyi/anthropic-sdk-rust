@@ -1,4 +1,4 @@
-use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder, AuthMethod};
+use anthropic_sdk::{Anthropic, ClientConfig, AuthMethod};
 use std::time::Duration;
 use std::env;
 
@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let demo_token = env::var("CUSTOM_BEARER_TOKEN").unwrap_or_else(|_| "your-custom-bearer-token".to_string());
     let base_url = env::var("CUSTOM_BASE_URL").unwrap_or_else(|_| "https://your-gateway.example.com/v1/anthropic".to_string());
 
-    println!("📡 Base URL: {}", base_url);
+    println!("📡 Base URL: {base_url}");
     println!("🤖 Model: claude-3-5-sonnet-latest\n");
     
     // Method 1: Convenience method (Recommended)

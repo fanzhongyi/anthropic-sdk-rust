@@ -134,19 +134,19 @@ async fn demonstrate_file_uploads() -> Result<(), Box<dyn std::error::Error>> {
     // Validate uploads
     println!("\n🔍 Validating upload parameters...");
     if let Err(e) = vision_upload.validate() {
-        println!("   ❌ Vision upload validation failed: {}", e);
+        println!("   ❌ Vision upload validation failed: {e}");
     } else {
         println!("   ✅ Vision upload parameters valid");
     }
     
     if let Err(e) = document_upload.validate() {
-        println!("   ❌ Document upload validation failed: {}", e);
+        println!("   ❌ Document upload validation failed: {e}");
     } else {
         println!("   ✅ Document upload parameters valid");
     }
     
     if let Err(e) = batch_upload.validate() {
-        println!("   ❌ Batch upload validation failed: {}", e);
+        println!("   ❌ Batch upload validation failed: {e}");
     } else {
         println!("   ✅ Batch upload parameters valid");
     }
@@ -321,7 +321,7 @@ async fn simulate_file_processing() -> Result<(), Box<dyn std::error::Error>> {
             FileStatus::Deleted => "🗑️",
         };
         
-        println!("   {} {}: {}", status_icon, file_id, description);
+        println!("   {status_icon} {file_id}: {description}");
         
         if status.is_ready() {
             println!("   🎉 File is ready for use!");
@@ -356,7 +356,7 @@ async fn demonstrate_advanced_operations() -> Result<(), Box<dyn std::error::Err
     println!("\n   🧹 Cleanup Old Files (>30 days):");
     let old_files = ["old_file1.txt", "deprecated_image.jpg", "archived_doc.pdf"];
     for file in old_files {
-        println!("      🗑️  Deleting: {}", file);
+        println!("      🗑️  Deleting: {file}");
         sleep(Duration::from_millis(100)).await;
     }
     println!("      ✅ Cleaned up {} old files", old_files.len());
