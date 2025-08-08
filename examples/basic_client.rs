@@ -30,14 +30,14 @@ async fn main() -> Result<()> {
     println!("\n🔗 Testing client connection...");
     match client.test_connection().await {
         Ok(_) => println!("✅ Connection test passed!"),
-        Err(e) => println!("❌ Connection test failed: {}", e),
+        Err(e) => println!("❌ Connection test failed: {e}"),
     }
 
     // Example 4: Demonstrate error handling
     println!("\n⚠️  Demonstrating error handling...");
     match Anthropic::new("") {
         Ok(_) => println!("❌ This shouldn't happen"),
-        Err(e) => println!("✅ Caught expected error: {}", e),
+        Err(e) => println!("✅ Caught expected error: {e}"),
     }
 
     println!("\n🎯 Phase 1 Foundation Complete!");

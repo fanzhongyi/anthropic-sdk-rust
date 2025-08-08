@@ -132,54 +132,6 @@ let response = client.messages()
     .await?;
 ```
 
-### 🧠 Extended Thinking (Claude 4)
-```rust
-use anthropic_sdk::{MessageCreateBuilder, ThinkingConfig};
-
-let response = client.messages()
-    .create(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 2048)
-            .thinking_config(ThinkingConfig::enabled(1024))
-            .user("What is 37 * 42? Think step by step.")
-            .build()
-    )
-    .await?;
-
-for block in &response.content {
-    match block {
-        ContentBlock::Thinking { thinking, .. } => println!("🤔 {}", thinking),
-        ContentBlock::Text { text } => println!("📝 {}", text),
-        _ => {}
-    }
-}
-```
-
-### 💾 Prompt Caching (Ephemeral)
-```rust
-use anthropic_sdk::{MessageCreateBuilder, SystemContentBlock, CacheControl};
-
-let system_prompt = "You are a helpful assistant with expertise in mathematics and science.";
-let response = client.messages()
-    .create(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 512)
-            .system(vec![SystemContentBlock::text_with_cache(
-                system_prompt,
-                CacheControl::ephemeral(),
-            )])
-            .user("Hello again!")
-            .build()
-    )
-    .await?;
-
-println!("Input tokens: {}  Output tokens: {}", response.usage.input_tokens, response.usage.output_tokens);
-if let Some(created) = response.usage.cache_creation_input_tokens {
-    println!("💾 Cache created ({} tokens)", created);
-}
-if let Some(read) = response.usage.cache_read_input_tokens {
-    println!("📖 Cache read ({} tokens)", read);
-}
-```
-
 ### 🔄 Streaming Responses
 
 ```rust

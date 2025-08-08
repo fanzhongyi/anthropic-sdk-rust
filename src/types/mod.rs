@@ -10,13 +10,14 @@ pub mod files_api;
 
 // Re-exports for convenience
 pub use errors::{AnthropicError, Result};
-pub use shared::{RequestId, Usage, ServerToolUsage, HasRequestId};
+pub use shared::{RequestId, Usage, ServerToolUsage, HasRequestId, CacheControl, ThinkingConfig};
 
 // Message types
 pub use messages::{
     Message, Role, ContentBlock, ImageSource, StopReason,
     MessageCreateParams, MessageParam, MessageContent, ContentBlockParam,
-    MessageCreateBuilder,
+    MessageCreateBuilder, SystemContentBlock, SystemParam,
+    ContentBlocksExt, ToolResultContentParam, ToolResultNestedBlockParam,
 };
 
 // Model types

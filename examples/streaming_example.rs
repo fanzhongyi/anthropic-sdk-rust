@@ -226,7 +226,7 @@ fn print_code_example(code: &str) {
     // Remove leading newline and common indentation
     let lines: Vec<&str> = code.trim().lines().collect();
     for line in lines {
-        println!("{}", line);
+        println!("{line}");
     }
     println!("```");
 }
@@ -247,11 +247,11 @@ async fn run_real_streaming_example() -> Result<()> {
         .stream_send()
         .await?
         .on_text(|delta, _| {
-            print!("{}", delta);
+            print!("{delta}");
             io::stdout().flush().unwrap();
         })
         .on_error(|error| {
-            eprintln!("\n❌ Stream error: {}", error);
+            eprintln!("\n❌ Stream error: {error}");
         })
         .final_message()
         .await?;
@@ -281,7 +281,7 @@ async fn demonstrate_manual_iteration() -> Result<()> {
             }
             MessageStreamEvent::ContentBlockDelta { delta, .. } => {
                 if let ContentBlockDelta::TextDelta { text } = delta {
-                    print!("{}", text);
+                    print!("{text}");
                     io::stdout().flush().unwrap();
                 }
             }

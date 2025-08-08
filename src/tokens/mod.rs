@@ -234,6 +234,7 @@ impl TokenCounter {
             output_tokens: estimated_output_tokens,
             cache_creation_input_tokens: None,
             cache_read_input_tokens: None,
+            cache_creation: None,
             server_tool_use: None,
             service_tier: None,
         };
@@ -460,6 +461,7 @@ mod tests {
             output_tokens: 500,
             cache_creation_input_tokens: Some(100),
             cache_read_input_tokens: Some(200),
+            cache_creation: None,
             server_tool_use: None,
             service_tier: None,
         };
@@ -479,6 +481,7 @@ mod tests {
             output_tokens: 50,
             cache_creation_input_tokens: None,
             cache_read_input_tokens: None,
+            cache_creation: None,
             server_tool_use: None,
             service_tier: None,
         };

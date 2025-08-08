@@ -48,7 +48,7 @@ pub use types::{
     AnthropicError, Result, RequestId, Usage,
     Message, Role, ContentBlock, ImageSource, StopReason,
     MessageCreateParams, MessageParam, MessageContent, ContentBlockParam,
-    MessageCreateBuilder, Model,
+    MessageCreateBuilder, SystemContentBlock, SystemParam, CacheControl, ThinkingConfig, Model,
     // Streaming types
     MessageStreamEvent, MessageDelta, MessageDeltaUsage,
     ContentBlockDelta, TextCitation,

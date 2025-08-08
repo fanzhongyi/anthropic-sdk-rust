@@ -67,6 +67,45 @@ pub enum MessageStreamEvent {
     ContentBlockStop {
         /// Index of the content block that finished
         index: usize,
+        /// Optional final content block state (for certain gateways)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content_block: Option<ContentBlock>,
+    },
+
+    /// Event when thinking content is generated (independent event).
+    ///
+    /// This provides thinking content during extended reasoning.
+    #[serde(rename = "thinking")]
+    Thinking {
+        /// The thinking content
+        thinking: String,
+    },
+
+    /// Event when signature is updated (independent event).
+    ///
+    /// This provides signature updates for thinking blocks.
+    #[serde(rename = "signature")]
+    Signature {
+        /// The signature string
+        signature: String,
+    },
+
+    /// Event when text content is generated (independent event).
+    ///
+    /// This provides text content during generation.
+    #[serde(rename = "text")]
+    Text {
+        /// The text content
+        text: String,
+    },
+
+    /// Event when input JSON is updated (independent event).
+    ///
+    /// This provides incremental JSON parsing updates for tool inputs.
+    #[serde(rename = "input_json")]
+    InputJson {
+        /// The partial JSON string
+        partial_json: String,
     },
 }
 
@@ -92,6 +131,9 @@ pub struct MessageDeltaUsage {
     pub cache_creation_input_tokens: Option<u32>,
     /// Cumulative cache read tokens (may be null)
     pub cache_read_input_tokens: Option<u32>,
+    /// Detailed cache creation breakdown (for 1-hour cache beta)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation: Option<crate::types::shared::CacheCreation>,
     /// Server tool usage statistics (may be null)
     pub server_tool_use: Option<ServerToolUsage>,
 }
@@ -240,6 +282,7 @@ mod tests {
                     output_tokens: 0,
                     cache_creation_input_tokens: None,
                     cache_read_input_tokens: None,
+                    cache_creation: None,
                     server_tool_use: None,
                     service_tier: None,
                 },
@@ -278,6 +321,7 @@ mod tests {
                 input_tokens: Some(10),
                 cache_creation_input_tokens: None,
                 cache_read_input_tokens: None,
+                cache_creation: None,
                 server_tool_use: None,
             },
         };
@@ -325,4 +369,4 @@ mod tests {
             assert_eq!(delta, parsed);
         }
     }
-} 
+}

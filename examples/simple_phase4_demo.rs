@@ -108,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         output_tokens: 300,
         cache_creation_input_tokens: None,
         cache_read_input_tokens: Some(50),
+        cache_creation: None,
         server_tool_use: None,
         service_tier: None,
     };

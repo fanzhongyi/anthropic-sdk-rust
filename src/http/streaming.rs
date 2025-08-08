@@ -3,16 +3,19 @@
 //! This module handles the HTTP layer for streaming responses from the Anthropic API,
 //! parsing SSE events and converting them into MessageStreamEvent objects.
 
-use std::pin::Pin;
-use std::task::{Context, Poll};
 use futures::Stream;
 use pin_project::pin_project;
 use reqwest::Response;
 use serde_json;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 
-use crate::types::{MessageStreamEvent, AnthropicError, Result};
+use crate::types::{
+    AnthropicError, ContentBlock, ContentBlockDelta, Message, MessageDelta, MessageDeltaUsage,
+    MessageStreamEvent, Result,
+};
 
 /// Configuration for SSE streaming requests.
 #[derive(Debug, Clone)]
@@ -47,16 +50,16 @@ pub struct HttpStreamClient {
     /// The underlying SSE event stream
     #[pin]
     event_stream: Pin<Box<dyn Stream<Item = Result<MessageStreamEvent>> + Send>>,
-    
+
     /// Broadcast sender for distributing events
     event_sender: broadcast::Sender<MessageStreamEvent>,
-    
+
     /// Configuration for the stream
     config: StreamConfig,
-    
+
     /// Whether the stream has ended
     ended: bool,
-    
+
     /// Request ID from response headers
     request_id: Option<String>,
 }
@@ -67,7 +70,8 @@ impl HttpStreamClient {
     /// This method takes a reqwest Response (which should be from a streaming endpoint)
     /// and converts it into a stream of MessageStreamEvent objects.
     pub async fn from_response(response: Response, config: StreamConfig) -> Result<Self> {
-        let request_id = response.headers()
+        let request_id = response
+            .headers()
             .get("request-id")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
@@ -103,12 +107,13 @@ impl HttpStreamClient {
 
         // Use eventsource-stream to parse SSE events
         use eventsource_stream::Eventsource;
-        
+
         let sse_stream = byte_stream
             .eventsource()
             .map(|result| {
                 match result {
                     Ok(event) => {
+                        tracing::trace!("SSE event info: {event:?}");
                         // Parse the SSE event data based on event type
                         match event.event.as_str() {
                             // Handle Anthropic API format (event type is "message", data contains the event)
@@ -116,24 +121,24 @@ impl HttpStreamClient {
                                 match serde_json::from_str::<MessageStreamEvent>(&event.data) {
                                     Ok(stream_event) => Ok(stream_event),
                                     Err(e) => Err(AnthropicError::StreamError(
-                                        format!("Failed to parse SSE event: {}", e)
+                                        format!("Failed to parse SSE event: {e}")
                                     )),
                                 }
                             }
                             // Handle custom gateway format (event type IS the message event type)
                             "message_start" => {
                                 // Parse the message data - handle both direct and nested formats
-                                match serde_json::from_str::<crate::types::Message>(&event.data) {
+                                match serde_json::from_str::<Message>(&event.data) {
                                     Ok(message) => Ok(MessageStreamEvent::MessageStart { message }),
                                     Err(_) => {
                                         // Try parsing as a wrapped message (custom gateway format)
                                         match serde_json::from_str::<serde_json::Value>(&event.data) {
                                             Ok(value) => {
                                                 if let Some(message_value) = value.get("message") {
-                                                    match serde_json::from_value::<crate::types::Message>(message_value.clone()) {
+                                                    match serde_json::from_value::<Message>(message_value.clone()) {
                                                         Ok(message) => Ok(MessageStreamEvent::MessageStart { message }),
                                                         Err(e) => Err(AnthropicError::StreamError(
-                                                            format!("Failed to parse nested message: {}", e)
+                                                            format!("Failed to parse nested message: {e}")
                                                         )),
                                                     }
                                                 } else {
@@ -143,7 +148,7 @@ impl HttpStreamClient {
                                                 }
                                             }
                                             Err(e) => Err(AnthropicError::StreamError(
-                                                format!("Failed to parse message_start as JSON: {}", e)
+                                                format!("Failed to parse message_start as JSON: {e}")
                                             )),
                                         }
                                     }
@@ -154,15 +159,15 @@ impl HttpStreamClient {
                                 match serde_json::from_str::<serde_json::Value>(&event.data) {
                                     Ok(value) => {
                                         let index = value["index"].as_u64().unwrap_or(0) as usize;
-                                        match serde_json::from_value::<crate::types::ContentBlock>(value["content_block"].clone()) {
+                                        match serde_json::from_value::<ContentBlock>(value["content_block"].clone()) {
                                             Ok(content_block) => Ok(MessageStreamEvent::ContentBlockStart { content_block, index }),
                                             Err(e) => Err(AnthropicError::StreamError(
-                                                format!("Failed to parse content_block in content_block_start: {}", e)
+                                                format!("Failed to parse content_block in content_block_start: {e}")
                                             )),
                                         }
                                     }
                                     Err(e) => Err(AnthropicError::StreamError(
-                                        format!("Failed to parse content_block_start event: {}", e)
+                                        format!("Failed to parse content_block_start event: {e}")
                                     )),
                                 }
                             }
@@ -171,27 +176,39 @@ impl HttpStreamClient {
                                 match serde_json::from_str::<serde_json::Value>(&event.data) {
                                     Ok(value) => {
                                         let index = value["index"].as_u64().unwrap_or(0) as usize;
-                                        match serde_json::from_value::<crate::types::ContentBlockDelta>(value["delta"].clone()) {
+                                        match serde_json::from_value::<ContentBlockDelta>(value["delta"].clone()) {
                                             Ok(delta) => Ok(MessageStreamEvent::ContentBlockDelta { delta, index }),
                                             Err(e) => Err(AnthropicError::StreamError(
-                                                format!("Failed to parse delta in content_block_delta: {}", e)
+                                                format!("Failed to parse delta in content_block_delta: {e}")
                                             )),
                                         }
                                     }
                                     Err(e) => Err(AnthropicError::StreamError(
-                                        format!("Failed to parse content_block_delta event: {}", e)
+                                        format!("Failed to parse content_block_delta event: {e}")
                                     )),
                                 }
                             }
                             "content_block_stop" => {
-                                // Parse as a generic JSON value to extract index
+                                // Parse as a generic JSON value to extract index and optional content_block
                                 match serde_json::from_str::<serde_json::Value>(&event.data) {
                                     Ok(value) => {
                                         let index = value["index"].as_u64().unwrap_or(0) as usize;
-                                        Ok(MessageStreamEvent::ContentBlockStop { index })
+                                        // Try to extract the final content_block if present (for custom gateways)
+                                        let content_block = if let Some(content_block_value) = value.get("content_block") {
+                                            match serde_json::from_value::<ContentBlock>(content_block_value.clone()) {
+                                                Ok(cb) => Some(cb),
+                                                Err(e) => {
+                                                    tracing::warn!("Failed to parse content_block in content_block_stop: {e}");
+                                                    None
+                                                }
+                                            }
+                                        } else {
+                                            None
+                                        };
+                                        Ok(MessageStreamEvent::ContentBlockStop { index, content_block })
                                     }
                                     Err(e) => Err(AnthropicError::StreamError(
-                                        format!("Failed to parse content_block_stop event: {}", e)
+                                        format!("Failed to parse content_block_stop event: {e}")
                                     )),
                                 }
                             }
@@ -199,20 +216,68 @@ impl HttpStreamClient {
                                 // Parse as a generic JSON value to extract delta and usage
                                 match serde_json::from_str::<serde_json::Value>(&event.data) {
                                     Ok(value) => {
-                                        let delta = serde_json::from_value::<crate::types::MessageDelta>(value["delta"].clone())
-                                            .map_err(|e| AnthropicError::StreamError(format!("Failed to parse delta: {}", e)))?;
-                                        let usage = serde_json::from_value::<crate::types::MessageDeltaUsage>(value["usage"].clone())
-                                            .map_err(|e| AnthropicError::StreamError(format!("Failed to parse usage: {}", e)))?;
+                                        let delta = serde_json::from_value::<MessageDelta>(value["delta"].clone())
+                                            .map_err(|e| AnthropicError::StreamError(format!("Failed to parse delta: {e}")))?;
+                                        let usage = serde_json::from_value::<MessageDeltaUsage>(value["usage"].clone())
+                                            .map_err(|e| AnthropicError::StreamError(format!("Failed to parse usage: {e}")))?;
                                         Ok(MessageStreamEvent::MessageDelta { delta, usage })
                                     }
                                     Err(e) => Err(AnthropicError::StreamError(
-                                        format!("Failed to parse message_delta event: {}", e)
+                                        format!("Failed to parse message_delta event: {e}")
                                     )),
                                 }
                             }
                             "message_stop" => {
                                 // Message stop doesn't need data parsing
                                 Ok(MessageStreamEvent::MessageStop)
+                            }
+                            "thinking" => {
+                                // Parse thinking event data
+                                match serde_json::from_str::<serde_json::Value>(&event.data) {
+                                    Ok(value) => {
+                                        let thinking = value["thinking"].as_str().unwrap_or("").to_string();
+                                        Ok(MessageStreamEvent::Thinking { thinking })
+                                    }
+                                    Err(e) => Err(AnthropicError::StreamError(
+                                        format!("Failed to parse thinking event: {e}")
+                                    )),
+                                }
+                            }
+                            "signature" => {
+                                // Parse signature event data
+                                match serde_json::from_str::<serde_json::Value>(&event.data) {
+                                    Ok(value) => {
+                                        let signature = value["signature"].as_str().unwrap_or("").to_string();
+                                        Ok(MessageStreamEvent::Signature { signature })
+                                    }
+                                    Err(e) => Err(AnthropicError::StreamError(
+                                        format!("Failed to parse signature event: {e}")
+                                    )),
+                                }
+                            }
+                            "text" => {
+                                // Parse text event data
+                                match serde_json::from_str::<serde_json::Value>(&event.data) {
+                                    Ok(value) => {
+                                        let text = value["text"].as_str().unwrap_or("").to_string();
+                                        Ok(MessageStreamEvent::Text { text })
+                                    }
+                                    Err(e) => Err(AnthropicError::StreamError(
+                                        format!("Failed to parse text event: {e}")
+                                    )),
+                                }
+                            }
+                            "input_json" => {
+                                // Handle input_json events - these are independent events without index
+                                match serde_json::from_str::<serde_json::Value>(&event.data) {
+                                    Ok(value) => {
+                                        let partial_json = value["partial_json"].as_str().unwrap_or("").to_string();
+                                        Ok(MessageStreamEvent::InputJson { partial_json })
+                                    }
+                                    Err(e) => Err(AnthropicError::StreamError(
+                                        format!("Failed to parse input_json event: {e}")
+                                    )),
+                                }
                             }
                             // Handle other event types
                             "ping" => {
@@ -223,13 +288,13 @@ impl HttpStreamClient {
                                 // Log unknown event types but don't fail
                                 tracing::debug!("Unknown SSE event type: {}", event_type);
                                 Err(AnthropicError::StreamError(
-                                    format!("Unknown event type: {}", event_type)
+                                    format!("Unknown event type: {event_type}")
                                 ))
                             }
                         }
                     }
                     Err(e) => Err(AnthropicError::StreamError(
-                        format!("SSE stream error: {}", e)
+                        format!("SSE stream error: {e}")
                     )),
                 }
             })
@@ -277,12 +342,12 @@ impl Stream for HttpStreamClient {
             Poll::Ready(Some(Ok(event))) => {
                 // Broadcast the event to all subscribers
                 let _ = this.event_sender.send(event.clone());
-                
+
                 // Check if this is a terminal event
                 if matches!(event, MessageStreamEvent::MessageStop) {
                     *this.ended = true;
                 }
-                
+
                 Poll::Ready(Some(Ok(event)))
             }
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
@@ -342,8 +407,12 @@ impl StreamRequestBuilder {
         endpoint: &str,
         body: &T,
     ) -> Result<HttpStreamClient> {
-        let url = format!("{}/{}", self.base_url.trim_end_matches('/'), endpoint.trim_start_matches('/'));
-        
+        let url = format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            endpoint.trim_start_matches('/')
+        );
+
         let mut headers = self.headers;
         headers.insert(
             reqwest::header::ACCEPT,
@@ -361,7 +430,9 @@ impl StreamRequestBuilder {
             .json(body)
             .send()
             .await
-            .map_err(|e| AnthropicError::Connection { message: e.to_string() })?;
+            .map_err(|e| AnthropicError::Connection {
+                message: e.to_string(),
+            })?;
 
         HttpStreamClient::from_response(response, self.config).await
     }
@@ -399,10 +470,10 @@ mod tests {
     async fn test_sse_event_parsing() {
         // Test that we can parse a sample SSE event
         let event_data = r#"{"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":null,"cache_read_input_tokens":null,"server_tool_use":null,"service_tier":null}}}"#;
-        
+
         let parsed: std::result::Result<MessageStreamEvent, _> = serde_json::from_str(event_data);
         assert!(parsed.is_ok());
-        
+
         if let Ok(MessageStreamEvent::MessageStart { message }) = parsed {
             assert_eq!(message.id, "msg_123");
             assert_eq!(message.usage.input_tokens, 10);
@@ -410,4 +481,4 @@ mod tests {
             panic!("Expected MessageStart event");
         }
     }
-} 
+}

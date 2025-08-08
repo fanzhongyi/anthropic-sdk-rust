@@ -5,7 +5,10 @@
 
 use std::sync::Arc;
 use crate::client::Anthropic;
-use crate::types::{Message, ToolChoice, ToolResult, MessageCreateBuilder};
+use crate::types::{
+    Message, ToolChoice, ToolResult, MessageCreateBuilder,
+    ToolResultContentParam, ToolResultNestedBlockParam, ImageSource, ToolImageSource,
+};
 use super::{ToolRegistry, ToolExecutor, ToolExecutionConfig, ToolOperationResult, ToolError};
 
 /// High-level tool conversation manager.
@@ -15,13 +18,13 @@ use super::{ToolRegistry, ToolExecutor, ToolExecutionConfig, ToolOperationResult
 pub struct ToolConversation {
     /// The Anthropic client for API calls.
     client: Arc<Anthropic>,
-    
+
     /// Tool registry for executing tools.
     registry: Arc<ToolRegistry>,
-    
+
     /// Tool executor for advanced execution features.
     executor: ToolExecutor,
-    
+
     /// Configuration for the conversation.
     config: ConversationConfig,
 }
@@ -31,19 +34,19 @@ pub struct ToolConversation {
 pub struct ConversationConfig {
     /// Maximum number of conversation turns.
     pub max_turns: usize,
-    
+
     /// Model to use for the conversation.
     pub model: String,
-    
+
     /// Maximum tokens per response.
     pub max_tokens: u32,
-    
+
     /// Tool choice strategy.
     pub tool_choice: Option<ToolChoice>,
-    
+
     /// Whether to automatically execute tools.
     pub auto_execute_tools: bool,
-    
+
     /// Tool execution configuration.
     pub execution_config: ToolExecutionConfig,
 }
@@ -94,14 +97,14 @@ impl ToolConversation {
     /// If Claude uses tools, they will be automatically executed if `auto_execute_tools` is enabled.
     pub async fn start(&self, user_message: impl Into<String>) -> ToolOperationResult<Message> {
         let tools = self.registry.get_tool_definitions();
-        
+
         let mut builder = MessageCreateBuilder::new(&self.config.model, self.config.max_tokens)
             .user(user_message.into());
 
         // Add tools if available
         if !tools.is_empty() {
             builder = builder.tools(tools);
-            
+
             if let Some(ref tool_choice) = self.config.tool_choice {
                 builder = builder.tool_choice(tool_choice.clone());
             }
@@ -121,7 +124,7 @@ impl ToolConversation {
     /// and returns Claude's response incorporating the tool results.
     pub async fn continue_with_tools(&self, message: &Message) -> ToolOperationResult<Option<Message>> {
         let tool_uses = self.executor.extract_tool_uses(message);
-        
+
         if tool_uses.is_empty() {
             return Ok(None);
         }
@@ -133,7 +136,7 @@ impl ToolConversation {
 
         // Execute all tools
         let tool_results = self.executor.execute_multiple(&tool_uses).await;
-        
+
         // Convert execution results to tool results
         let mut results = Vec::new();
         for (tool_use, result) in tool_uses.iter().zip(tool_results.iter()) {
@@ -142,7 +145,7 @@ impl ToolConversation {
                 Err(error) => {
                     results.push(ToolResult::error(
                         tool_use.id.clone(),
-                        format!("Tool execution failed: {}", error),
+                        format!("Tool execution failed: {error}"),
                     ));
                 }
             }
@@ -150,45 +153,56 @@ impl ToolConversation {
 
         // Create a follow-up message with tool results
         use crate::types::messages::{MessageContent, ContentBlockParam};
-        
+
         // Convert tool results to content blocks
         let tool_result_blocks: Vec<ContentBlockParam> = results.into_iter().map(|result| {
-            // Convert ToolResultContent to String for ContentBlockParam::ToolResult
-            let content_string = match result.content {
-                crate::types::ToolResultContent::Text(text) => Some(text),
-                crate::types::ToolResultContent::Json(json) => Some(json.to_string()),
+            let content = match result.content {
+                crate::types::ToolResultContent::Text(text) => Some(ToolResultContentParam::Text(text)),
+                crate::types::ToolResultContent::Json(json) => Some(ToolResultContentParam::Text(json.to_string())),
                 crate::types::ToolResultContent::Blocks(blocks) => {
-                    // Convert blocks to a simple text representation
-                    let text_parts: Vec<String> = blocks.into_iter().map(|block| {
-                        match block {
-                            crate::types::ToolResultBlock::Text { text } => text,
-                            crate::types::ToolResultBlock::Image { .. } => "[Image]".to_string(),
-                        }
-                    }).collect();
-                    Some(text_parts.join("\n"))
+                    let nested: Vec<ToolResultNestedBlockParam> = blocks
+                        .into_iter()
+                        .map(|block| match block {
+                            crate::types::ToolResultBlock::Text { text } => {
+                                ToolResultNestedBlockParam::Text { text, cache_control: None }
+                            }
+                            crate::types::ToolResultBlock::Image { source } => {
+                                match source {
+                                    ToolImageSource::Base64 { media_type, data } => {
+                                        ToolResultNestedBlockParam::Image {
+                                            source: ImageSource::Base64 { media_type, data },
+                                            cache_control: None,
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .collect();
+                    Some(ToolResultContentParam::Blocks(nested))
                 }
             };
-            
+
             ContentBlockParam::ToolResult {
                 tool_use_id: result.tool_use_id,
-                content: content_string,
+                content,
                 is_error: result.is_error,
+                cache_control: None,
             }
         }).collect();
-        
+
         let mut builder = MessageCreateBuilder::new(&self.config.model, self.config.max_tokens)
             .user(MessageContent::Blocks(tool_result_blocks));
-            
+
         // Add tools again for potential follow-up tool use
         let tools = self.registry.get_tool_definitions();
         if !tools.is_empty() {
             builder = builder.tools(tools);
-            
+
             if let Some(ref tool_choice) = self.config.tool_choice {
                 builder = builder.tool_choice(tool_choice.clone());
             }
         }
-        
+
         let next_message = self.client.messages()
             .create(builder.build())
             .await
@@ -342,4 +356,4 @@ mod tests {
         assert_eq!(config.tool_choice, Some(ToolChoice::Auto));
         assert!(config.auto_execute_tools);
     }
-} 
+}

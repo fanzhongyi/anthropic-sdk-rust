@@ -46,6 +46,10 @@ pub struct Tool {
     
     /// JSON schema definition for the tool's input parameters.
     pub input_schema: ToolInputSchema,
+    
+    /// Optional cache control for prompt caching
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<crate::types::shared::CacheControl>,
 }
 
 /// JSON schema for tool input parameters.
@@ -181,6 +185,7 @@ pub struct ToolBuilder {
     properties: Map<String, Value>,
     required: Vec<String>,
     additional: Map<String, Value>,
+    cache_control: Option<crate::types::shared::CacheControl>,
 }
 
 impl ToolBuilder {
@@ -192,6 +197,7 @@ impl ToolBuilder {
             properties: Map::new(),
             required: Vec::new(),
             additional: Map::new(),
+            cache_control: None,
         }
     }
     
@@ -264,6 +270,12 @@ impl ToolBuilder {
         self
     }
     
+    /// Set cache control for prompt caching.
+    pub fn cache_control(mut self, cache_control: crate::types::shared::CacheControl) -> Self {
+        self.cache_control = Some(cache_control);
+        self
+    }
+    
     /// Build the tool definition.
     pub fn build(self) -> Tool {
         Tool {
@@ -275,6 +287,7 @@ impl ToolBuilder {
                 required: self.required,
                 additional: self.additional,
             },
+            cache_control: self.cache_control,
         }
     }
 }
@@ -288,6 +301,7 @@ impl Tool {
             properties: Map::new(),
             required: Vec::new(),
             additional: Map::new(),
+            cache_control: None,
         }
     }
     
@@ -374,7 +388,7 @@ impl ToolResult {
         Self {
             tool_use_id: tool_use_id.into(),
             content: ToolResultContent::Text(content.into()),
-            is_error: None,
+            is_error: Some(false),
         }
     }
     
@@ -383,7 +397,7 @@ impl ToolResult {
         Self {
             tool_use_id: tool_use_id.into(),
             content: ToolResultContent::Json(content),
-            is_error: None,
+            is_error: Some(false),
         }
     }
     
@@ -401,7 +415,7 @@ impl ToolResult {
         Self {
             tool_use_id: tool_use_id.into(),
             content: ToolResultContent::Blocks(blocks),
-            is_error: None,
+            is_error: Some(false),
         }
     }
 }
@@ -569,7 +583,7 @@ mod tests {
     fn test_tool_result_creation() {
         let success_result = ToolResult::success("tool_123", "Success message");
         assert_eq!(success_result.tool_use_id, "tool_123");
-        assert!(success_result.is_error.is_none());
+        assert_eq!(success_result.is_error, Some(false));
 
         let error_result = ToolResult::error("tool_456", "Error message");
         assert_eq!(error_result.tool_use_id, "tool_456");

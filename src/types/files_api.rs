@@ -362,7 +362,7 @@ impl UploadProgress {
     pub fn eta_string(&self) -> Option<String> {
         self.eta_seconds.map(|eta| {
             if eta < 60.0 {
-                format!("{:.0}s", eta)
+                format!("{eta:.0}s")
             } else if eta < 3600.0 {
                 format!("{:.0}m {:.0}s", eta / 60.0, eta % 60.0)
             } else {

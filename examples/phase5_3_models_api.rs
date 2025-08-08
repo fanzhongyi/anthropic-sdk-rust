@@ -100,7 +100,7 @@ async fn demonstrate_model_discovery() -> Result<(), Box<dyn std::error::Error>>
     let mock_models = create_mock_model_list();
     
     println!("\n   📊 Available Models:");
-    for (_i, model) in mock_models.iter().enumerate() {
+    for model in mock_models.iter() {
         let family_icon = match model.family().as_str() {
             "claude-4" => "🌟",
             "claude-3-7" => "🔥", 
@@ -149,7 +149,7 @@ async fn demonstrate_model_capabilities() -> Result<(), Box<dyn std::error::Erro
     let mock_models = create_mock_model_list();
     
     for model in mock_models.iter().take(3) {
-        let capabilities = create_mock_capabilities(&model);
+        let capabilities = create_mock_capabilities(model);
         
         println!("\n   📋 {} Capabilities:", model.display_name);
         println!("      🧠 Max Context: {} tokens", capabilities.max_context_length);
@@ -170,7 +170,7 @@ async fn demonstrate_model_capabilities() -> Result<(), Box<dyn std::error::Erro
                 ModelCapability::Analysis => "📊",
                 _ => "🔹",
             };
-            println!("         {} {:?}", icon, capability);
+            println!("         {icon} {capability:?}");
         }
         
         println!("      🌍 Supported Languages: {} languages", capabilities.supported_languages.len());
@@ -222,22 +222,22 @@ async fn demonstrate_model_selection() -> Result<(), Box<dyn std::error::Error>>
     ];
     
     for (scenario_name, requirements) in scenarios {
-        println!("\n   📋 Scenario: {}", scenario_name);
+        println!("\n   📋 Scenario: {scenario_name}");
         
         println!("      🎯 Requirements:");
         if let Some(max_input) = requirements.max_input_cost_per_token {
-            println!("         💵 Max input cost: ${:.4}/token", max_input);
+            println!("         💵 Max input cost: ${max_input:.4}/token");
         }
         if let Some(max_output) = requirements.max_output_cost_per_token {
-            println!("         💵 Max output cost: ${:.4}/token", max_output);
+            println!("         💵 Max output cost: ${max_output:.4}/token");
         }
         if let Some(min_context) = requirements.min_context_length {
-            println!("         🧠 Min context: {} tokens", min_context);
+            println!("         🧠 Min context: {min_context} tokens");
         }
         if !requirements.required_capabilities.is_empty() {
             println!("         🎯 Required capabilities:");
             for cap in &requirements.required_capabilities {
-                println!("            - {:?}", cap);
+                println!("            - {cap:?}");
             }
         }
         if let Some(vision) = requirements.requires_vision {
@@ -251,7 +251,7 @@ async fn demonstrate_model_selection() -> Result<(), Box<dyn std::error::Error>>
             }
         }
         if let Some(family) = &requirements.preferred_family {
-            println!("         🏷️  Preferred family: {}", family);
+            println!("         🏷️  Preferred family: {family}");
         }
         
         // Simulate finding the best model
@@ -265,7 +265,7 @@ async fn demonstrate_model_selection() -> Result<(), Box<dyn std::error::Error>>
         
         let reasons = generate_match_reasons(&requirements, &best_model);
         for reason in reasons {
-            println!("            ✓ {}", reason);
+            println!("            ✓ {reason}");
         }
         
         sleep(Duration::from_millis(300)).await;
@@ -347,7 +347,7 @@ async fn demonstrate_model_comparison() -> Result<(), Box<dyn std::error::Error>
     
     println!("\n   🔍 Key Differences:");
     for difference in &comparison.summary.key_differences {
-        println!("      • {}", difference);
+        println!("      • {difference}");
     }
     
     println!("\n   🎯 Use Case Recommendations:");
@@ -359,7 +359,7 @@ async fn demonstrate_model_comparison() -> Result<(), Box<dyn std::error::Error>
             "balanced" => "⚖️",
             _ => "🔹",
         };
-        println!("      {} {}: {}", icon, use_case, model);
+        println!("      {icon} {use_case}: {model}");
     }
     
     Ok(())
@@ -377,10 +377,10 @@ async fn demonstrate_cost_estimation() -> Result<(), Box<dyn std::error::Error>>
     ];
     
     for (scenario, model_id, input_tokens, output_tokens) in usage_scenarios {
-        println!("\n   📋 Scenario: {}", scenario);
-        println!("      🤖 Model: {}", model_id);
-        println!("      📥 Input tokens: {}", input_tokens);
-        println!("      📤 Output tokens: {}", output_tokens);
+        println!("\n   📋 Scenario: {scenario}");
+        println!("      🤖 Model: {model_id}");
+        println!("      📥 Input tokens: {input_tokens}");
+        println!("      📤 Output tokens: {output_tokens}");
         
         let estimation = simulate_cost_estimation(model_id, input_tokens, output_tokens);
         
@@ -388,10 +388,10 @@ async fn demonstrate_cost_estimation() -> Result<(), Box<dyn std::error::Error>>
         println!("         Input cost:  ${:.4}", estimation.input_cost_usd);
         println!("         Output cost: ${:.4}", estimation.output_cost_usd);
         if let Some(discount) = estimation.batch_discount_usd {
-            println!("         Batch discount: -${:.4}", discount);
+            println!("         Batch discount: -${discount:.4}");
         }
         if let Some(savings) = estimation.cache_savings_usd {
-            println!("         Cache savings: -${:.4}", savings);
+            println!("         Cache savings: -${savings:.4}");
         }
         println!("         ─────────────────────");
         println!("         Total cost:  ${:.4}", estimation.final_cost_usd);
@@ -418,7 +418,7 @@ async fn demonstrate_cost_estimation() -> Result<(), Box<dyn std::error::Error>>
             "💎 Premium"
         };
         
-        println!("         Cost efficiency: {}", efficiency_rating);
+        println!("         Cost efficiency: {efficiency_rating}");
         
         sleep(Duration::from_millis(400)).await;
     }
@@ -470,14 +470,14 @@ async fn demonstrate_usage_recommendations() -> Result<(), Box<dyn std::error::E
             if !rec.strengths.is_empty() {
                 println!("            ✅ Strengths:");
                 for strength in &rec.strengths {
-                    println!("               • {}", strength);
+                    println!("               • {strength}");
                 }
             }
             
             if !rec.limitations.is_empty() {
                 println!("            ⚠️  Limitations:");
                 for limitation in &rec.limitations {
-                    println!("               • {}", limitation);
+                    println!("               • {limitation}");
                 }
             }
         }
@@ -485,7 +485,7 @@ async fn demonstrate_usage_recommendations() -> Result<(), Box<dyn std::error::E
         // Guidelines
         println!("      📋 Best Practices:");
         for guideline in &recommendations.guidelines {
-            println!("         ✓ {}", guideline);
+            println!("         ✓ {guideline}");
         }
         
         // Recommended parameters
@@ -521,7 +521,7 @@ async fn demonstrate_usage_recommendations() -> Result<(), Box<dyn std::error::E
         if !recommendations.pitfalls.is_empty() {
             println!("      ⚠️  Common Pitfalls to Avoid:");
             for pitfall in &recommendations.pitfalls {
-                println!("         ❌ {}", pitfall);
+                println!("         ❌ {pitfall}");
             }
         }
         

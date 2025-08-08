@@ -1,11 +1,8 @@
 use anthropic_sdk::{
-    Anthropic, MessageCreateBuilder, ContentBlockParam, MessageContent,
+    MessageCreateBuilder, ContentBlockParam, MessageContent,
     File, FileSource, FileBuilder, FileConstraints, to_file, FileError,
 };
 use bytes::Bytes;
-use mime::Mime;
-use std::path::Path;
-use tokio::fs;
 use base64::Engine;
 
 #[tokio::main]
@@ -42,12 +39,12 @@ async fn demo_file_creation() -> Result<(), Box<dyn std::error::Error>> {
     // 1. From bytes
     let text_data = b"Hello, world! This is a text file.";
     let text_file = File::from_bytes("hello.txt", Bytes::from_static(text_data), None)?;
-    println!("✓ Created from bytes: {}", text_file);
+    println!("✓ Created from bytes: {text_file}");
 
     // 2. From base64
     let base64_data = base64::engine::general_purpose::STANDARD.encode(text_data);
     let base64_file = File::from_base64("hello_b64.txt", base64_data, None)?;
-    println!("✓ Created from base64: {}", base64_file);
+    println!("✓ Created from base64: {base64_file}");
 
     // 3. Using FileBuilder with constraints
     let constrained_file = FileBuilder::new()
@@ -61,7 +58,7 @@ async fn demo_file_creation() -> Result<(), Box<dyn std::error::Error>> {
         .with_hash()
         .build(FileSource::Bytes(Bytes::from_static(text_data)))
         .await?;
-    println!("✓ Created with builder: {}", constrained_file);
+    println!("✓ Created with builder: {constrained_file}");
     println!("  Hash: {:?}", constrained_file.hash);
 
     // 4. Using convenience function
@@ -70,7 +67,7 @@ async fn demo_file_creation() -> Result<(), Box<dyn std::error::Error>> {
         Some("convenient.txt".to_string()),
         Some(mime::TEXT_PLAIN),
     ).await?;
-    println!("✓ Created with to_file(): {}", convenient_file);
+    println!("✓ Created with to_file(): {convenient_file}");
 
     println!();
     Ok(())
@@ -92,7 +89,7 @@ async fn demo_file_validation() -> Result<(), Box<dyn std::error::Error>> {
 
     match large_file.validate(&strict_constraints) {
         Err(FileError::TooLarge { size, max_size }) => {
-            println!("✓ Size validation works: {} bytes > {} bytes limit", size, max_size);
+            println!("✓ Size validation works: {size} bytes > {max_size} bytes limit");
         }
         _ => println!("❌ Size validation failed"),
     }
@@ -107,7 +104,7 @@ async fn demo_file_validation() -> Result<(), Box<dyn std::error::Error>> {
     let text_file = File::from_bytes("text.txt", Bytes::from_static(b"text"), None)?;
     match text_file.validate(&image_constraints) {
         Err(FileError::InvalidMimeType { mime_type, .. }) => {
-            println!("✓ MIME type validation works: {} not allowed", mime_type);
+            println!("✓ MIME type validation works: {mime_type} not allowed");
         }
         _ => println!("❌ MIME type validation failed"),
     }
@@ -152,11 +149,11 @@ async fn demo_file_processing() -> Result<(), Box<dyn std::error::Error>> {
 
     // Calculate hash
     let hash = file.calculate_hash().await?;
-    println!("✓ File hash calculated: {}", hash);
+    println!("✓ File hash calculated: {hash}");
 
     // Verify hash
     let is_valid = file.verify_hash(&hash).await?;
-    println!("✓ Hash verification: {}", is_valid);
+    println!("✓ Hash verification: {is_valid}");
 
     // Convert to base64
     let base64_data = file.to_base64().await?;
@@ -213,9 +210,9 @@ async fn demo_message_integration() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Content blocks: {}", blocks.len());
         for (i, block) in blocks.iter().enumerate() {
             match block {
-                ContentBlockParam::Text { .. } => println!("    Block {}: Text", i),
-                ContentBlockParam::Image { .. } => println!("    Block {}: Image", i),
-                _ => println!("    Block {}: Other", i),
+                ContentBlockParam::Text { .. } => println!("    Block {i}: Text"),
+                ContentBlockParam::Image { .. } => println!("    Block {i}: Image"),
+                _ => println!("    Block {i}: Other"),
             }
         }
     }
@@ -280,8 +277,8 @@ async fn advanced_file_operations() -> Result<(), Box<dyn std::error::Error>> {
     let hash = large_file.calculate_hash().await?;
     let duration = start.elapsed();
     
-    println!("✓ Hash calculation for 100KB file: {:?}", duration);
-    println!("  Hash: {}", hash);
+    println!("✓ Hash calculation for 100KB file: {duration:?}");
+    println!("  Hash: {hash}");
 
     // File size validation
     let constraints = FileConstraints {
@@ -292,10 +289,10 @@ async fn advanced_file_operations() -> Result<(), Box<dyn std::error::Error>> {
 
     match large_file.validate(&constraints) {
         Err(FileError::TooLarge { size, max_size }) => {
-            println!("✓ Size constraint enforced: {} > {}", size, max_size);
+            println!("✓ Size constraint enforced: {size} > {max_size}");
         }
         Ok(_) => println!("❌ Size constraint not enforced"),
-        Err(e) => println!("❌ Unexpected error: {}", e),
+        Err(e) => println!("❌ Unexpected error: {e}"),
     }
 
     Ok(())

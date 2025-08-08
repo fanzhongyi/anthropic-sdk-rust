@@ -1,7 +1,5 @@
-use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
 use anthropic_sdk::types::ContentBlock;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use std::time::Duration;
 use std::env;
 use serde_json::json;
 
@@ -90,7 +88,7 @@ impl CustomAnthropicClient {
 
     async fn test_api_key_variations(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Test query parameter
-        let url_with_key = format!("{}?api_key={}", self.base_url, self.api_key);
+        let _url_with_key = format!("{}?api_key={}", self.base_url, self.api_key);
         println!("      ✅ Query param: Testing...");
         
         // Test in request body
@@ -137,7 +135,7 @@ fn show_configuration_examples() {
 
 /// Test authentication with the Anthropic Rust SDK
 async fn test_with_anthropic_sdk() -> Result<(), Box<dyn std::error::Error>> {
-    use anthropic_sdk::{Anthropic, ClientConfig};
+    use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
     
     let api_key = env::var("CUSTOM_BEARER_TOKEN")
         .or_else(|_| env::var("ANTHROPIC_API_KEY"))
@@ -153,15 +151,14 @@ async fn test_with_anthropic_sdk() -> Result<(), Box<dyn std::error::Error>> {
     
     let client = Anthropic::with_config(config)?;
     
-    let response = client.messages()
-        .model("claude-3-5-sonnet-latest")
-        .max_tokens(20)
+    let request = MessageCreateBuilder::new("claude-3-5-sonnet-latest", 20)
         .user("Test message")
-        .send()
-        .await?;
+        .build();
+    
+    let response = client.messages().create(request).await?;
     
     println!("✅ SDK test successful!");
-    println!("📝 Response: {}", response.content.first().unwrap().text.as_ref().unwrap());
+    println!("📝 Response: {}", extract_text_from_content(&response.content));
     
     Ok(())
 }
@@ -185,11 +182,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     custom_client.test_auth_formats().await?;
     
     // Test with the SDK
-    println!("\n" + "=".repeat(60).as_str());
+    println!("\n{}", "=".repeat(60));
     test_with_anthropic_sdk().await?;
     
     // Show configuration help
-    println!("\n" + "=".repeat(60).as_str());
+    println!("\n{}", "=".repeat(60));
     show_configuration_examples();
     
     println!("\n🎯 Next steps:");
