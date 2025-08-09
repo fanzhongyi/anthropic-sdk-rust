@@ -388,7 +388,7 @@ impl ToolResult {
         Self {
             tool_use_id: tool_use_id.into(),
             content: ToolResultContent::Text(content.into()),
-            is_error: None,
+            is_error: Some(false),
         }
     }
     
@@ -397,7 +397,7 @@ impl ToolResult {
         Self {
             tool_use_id: tool_use_id.into(),
             content: ToolResultContent::Json(content),
-            is_error: None,
+            is_error: Some(false),
         }
     }
     
@@ -415,7 +415,7 @@ impl ToolResult {
         Self {
             tool_use_id: tool_use_id.into(),
             content: ToolResultContent::Blocks(blocks),
-            is_error: None,
+            is_error: Some(false),
         }
     }
 }
@@ -583,7 +583,7 @@ mod tests {
     fn test_tool_result_creation() {
         let success_result = ToolResult::success("tool_123", "Success message");
         assert_eq!(success_result.tool_use_id, "tool_123");
-        assert!(success_result.is_error.is_none());
+        assert_eq!(success_result.is_error, Some(false));
 
         let error_result = ToolResult::error("tool_456", "Error message");
         assert_eq!(error_result.tool_use_id, "tool_456");
