@@ -150,8 +150,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let stream = client
         .messages()
         .stream(
-            MessageCreateBuilder::new("claude-3-haiku@20240307", 128)
-                .user("Please count from 1 to 5.")
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 128)
+                .user("Please count from 1 to 10 and say hello!")
                 .build(),
         )
         .await?;
@@ -163,7 +163,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             MessageStreamEvent::MessageStop => {
                 println!(" <- stream end\n");
-                break;
             }
             _ => {}
         }

@@ -78,7 +78,7 @@ async fn calculate_tool(input: Value) -> Result<ToolResult, Box<dyn std::error::
         _ => return Ok(ToolResult::error("calc_error", "Unknown operation")),
     };
 
-    Ok(ToolResult::success("calc_result", format!("{} {} {} = {}", a, operation, b, result)))
+    Ok(ToolResult::success("calc_result", format!("{a} {operation} {b} = {result}")))
 }
 
 /// Example time tool using the macro
@@ -173,7 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   🌤️  Weather result: {:?}", result.content);
         }
         Err(e) => {
-            println!("   ❌ Weather tool failed: {}", e);
+            println!("   ❌ Weather tool failed: {e}");
         }
     }
 
@@ -193,7 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   🧮 Calculator result: {:?}", result.content);
         }
         Err(e) => {
-            println!("   ❌ Calculator tool failed: {}", e);
+            println!("   ❌ Calculator tool failed: {e}");
         }
     }
 

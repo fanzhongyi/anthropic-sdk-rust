@@ -67,6 +67,9 @@ pub enum MessageStreamEvent {
     ContentBlockStop {
         /// Index of the content block that finished
         index: usize,
+        /// Optional final content block state (for certain gateways)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content_block: Option<ContentBlock>,
     },
 
     /// Event when thinking content is generated (independent event).
@@ -98,6 +101,17 @@ pub enum MessageStreamEvent {
         text: String,
         /// Snapshot of complete text so far
         snapshot: String,
+    },
+
+    /// Event when input JSON is updated (independent event).
+    ///
+    /// This provides incremental JSON parsing updates for tool inputs.
+    #[serde(rename = "input_json")]
+    InputJson {
+        /// The partial JSON string
+        partial_json: String,
+        /// Snapshot of parsed JSON so far
+        snapshot: serde_json::Value,
     },
 }
 
@@ -274,11 +288,10 @@ mod tests {
                     output_tokens: 0,
                     cache_creation_input_tokens: None,
                     cache_read_input_tokens: None,
+                    cache_creation: None,
                     server_tool_use: None,
                     service_tier: None,
                 },
-                    cache_creation: None,
-                    cache_creation: None,
                 request_id: None,
             },
         };

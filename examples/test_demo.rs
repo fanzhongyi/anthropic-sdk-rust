@@ -93,7 +93,7 @@ async fn test_basic_thinking(client: &Anthropic) -> Result<(), Box<dyn Error>> {
                 // Show first few lines of thinking
                 let lines: Vec<&str> = thinking.lines().take(3).collect();
                 for line in lines {
-                    println!("   💭 {}", line);
+                    println!("   💭 {line}");
                 }
                 if thinking.lines().count() > 3 {
                     println!("   💭 ... (and {} more lines)", thinking.lines().count() - 3);
@@ -193,7 +193,7 @@ Provide detailed, actionable recommendations with specific examples.
     if message2.usage.cache_read_input_tokens.is_some() {
         println!("✅ Cache read detected in second request!");
         let cache_savings = message2.usage.cache_read_input_tokens.unwrap();
-        println!("💰 Cache saved {} tokens on second request", cache_savings);
+        println!("💰 Cache saved {cache_savings} tokens on second request");
     } else {
         println!("⚠️  No cache read detected - cache might not be working or expired");
     }
@@ -284,7 +284,7 @@ Challenges:
     if let Some(cache_tokens) = message.usage.cache_read_input_tokens {
         let total_input = message.usage.total_input_tokens();
         let cache_percentage = (cache_tokens as f64 / total_input as f64) * 100.0;
-        println!("💰 Cache efficiency: {:.1}% of input tokens were cached", cache_percentage);
+        println!("💰 Cache efficiency: {cache_percentage:.1}% of input tokens were cached");
     }
 
     Ok(())

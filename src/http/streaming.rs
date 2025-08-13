@@ -47,16 +47,16 @@ pub struct HttpStreamClient {
     /// The underlying SSE event stream
     #[pin]
     event_stream: Pin<Box<dyn Stream<Item = Result<MessageStreamEvent>> + Send>>,
-    
+
     /// Broadcast sender for distributing events
     event_sender: broadcast::Sender<MessageStreamEvent>,
-    
+
     /// Configuration for the stream
     config: StreamConfig,
-    
+
     /// Whether the stream has ended
     ended: bool,
-    
+
     /// Request ID from response headers
     request_id: Option<String>,
 }
@@ -103,12 +103,13 @@ impl HttpStreamClient {
 
         // Use eventsource-stream to parse SSE events
         use eventsource_stream::Eventsource;
-        
+
         let sse_stream = byte_stream
             .eventsource()
             .map(|result| {
                 match result {
                     Ok(event) => {
+                        tracing::trace!("SSE event info: {event:?}");
                         // Parse the SSE event data based on event type
                         match event.event.as_str() {
                             // Handle Anthropic API format (event type is "message", data contains the event)
@@ -184,11 +185,23 @@ impl HttpStreamClient {
                                 }
                             }
                             "content_block_stop" => {
-                                // Parse as a generic JSON value to extract index
+                                // Parse as a generic JSON value to extract index and optional content_block
                                 match serde_json::from_str::<serde_json::Value>(&event.data) {
                                     Ok(value) => {
                                         let index = value["index"].as_u64().unwrap_or(0) as usize;
-                                        Ok(MessageStreamEvent::ContentBlockStop { index })
+                                        // Try to extract the final content_block if present (for custom gateways)
+                                        let content_block = if let Some(content_block_value) = value.get("content_block") {
+                                            match serde_json::from_value::<crate::types::ContentBlock>(content_block_value.clone()) {
+                                                Ok(cb) => Some(cb),
+                                                Err(e) => {
+                                                    tracing::warn!("Failed to parse content_block in content_block_stop: {e}");
+                                                    None
+                                                }
+                                            }
+                                        } else {
+                                            None
+                                        };
+                                        Ok(MessageStreamEvent::ContentBlockStop { index, content_block })
                                     }
                                     Err(e) => Err(AnthropicError::StreamError(
                                         format!("Failed to parse content_block_stop event: {e}")
@@ -249,6 +262,19 @@ impl HttpStreamClient {
                                     }
                                     Err(e) => Err(AnthropicError::StreamError(
                                         format!("Failed to parse text event: {e}")
+                                    )),
+                                }
+                            }
+                            "input_json" => {
+                                // Handle input_json events - these are independent events without index
+                                match serde_json::from_str::<serde_json::Value>(&event.data) {
+                                    Ok(value) => {
+                                        let partial_json = value["partial_json"].as_str().unwrap_or("").to_string();
+                                        let snapshot = value["snapshot"].clone();
+                                        Ok(MessageStreamEvent::InputJson { partial_json, snapshot })
+                                    }
+                                    Err(e) => Err(AnthropicError::StreamError(
+                                        format!("Failed to parse input_json event: {e}")
                                     )),
                                 }
                             }
@@ -315,12 +341,12 @@ impl Stream for HttpStreamClient {
             Poll::Ready(Some(Ok(event))) => {
                 // Broadcast the event to all subscribers
                 let _ = this.event_sender.send(event.clone());
-                
+
                 // Check if this is a terminal event
                 if matches!(event, MessageStreamEvent::MessageStop) {
                     *this.ended = true;
                 }
-                
+
                 Poll::Ready(Some(Ok(event)))
             }
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
@@ -381,7 +407,7 @@ impl StreamRequestBuilder {
         body: &T,
     ) -> Result<HttpStreamClient> {
         let url = format!("{}/{}", self.base_url.trim_end_matches('/'), endpoint.trim_start_matches('/'));
-        
+
         let mut headers = self.headers;
         headers.insert(
             reqwest::header::ACCEPT,
@@ -437,10 +463,10 @@ mod tests {
     async fn test_sse_event_parsing() {
         // Test that we can parse a sample SSE event
         let event_data = r#"{"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-latest","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":null,"cache_read_input_tokens":null,"server_tool_use":null,"service_tier":null}}}"#;
-        
+
         let parsed: std::result::Result<MessageStreamEvent, _> = serde_json::from_str(event_data);
         assert!(parsed.is_ok());
-        
+
         if let Ok(MessageStreamEvent::MessageStart { message }) = parsed {
             assert_eq!(message.id, "msg_123");
             assert_eq!(message.usage.input_tokens, 10);
@@ -448,4 +474,4 @@ mod tests {
             panic!("Expected MessageStart event");
         }
     }
-} 
+}

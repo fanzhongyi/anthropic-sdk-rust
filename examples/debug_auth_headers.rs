@@ -1,6 +1,3 @@
-use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
-use std::time::Duration;
-use reqwest::header::{HeaderMap, HeaderValue};
 use std::env;
 
 #[tokio::main]
@@ -13,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("⚠️  No base URL found. Please set CUSTOM_BASE_URL");
 
     println!("📋 Testing Authentication Headers with Custom Gateway\n");
-    println!("📡 Base URL: {}", base_url);
+    println!("📡 Base URL: {base_url}");
     println!("🔑 API Key: {}...{}", &api_key[..4.min(api_key.len())], &api_key[api_key.len()-4.min(api_key.len())..]);
 
     // Test 1: Bearer token (most common)
@@ -42,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn test_bearer_token(api_key: &str, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    let url = format!("{}/messages", base_url);
+    let url = format!("{base_url}/messages");
 
     let payload = serde_json::json!({
         "model": "claude-3-5-sonnet-latest",
@@ -54,7 +51,7 @@ async fn test_bearer_token(api_key: &str, base_url: &str) -> Result<(), Box<dyn 
     
     let response = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .header("anthropic-version", "2023-06-01")
         .json(&payload)
@@ -66,7 +63,7 @@ async fn test_bearer_token(api_key: &str, base_url: &str) -> Result<(), Box<dyn 
         let json: serde_json::Value = response.json().await?;
         if let Some(content) = json.get("content").and_then(|c| c.as_array()).and_then(|a| a.first()) {
             if let Some(text) = content.get("text").and_then(|t| t.as_str()) {
-                println!("   📝 Response: {}", text);
+                println!("   📝 Response: {text}");
             }
         }
     } else {
@@ -78,7 +75,7 @@ async fn test_bearer_token(api_key: &str, base_url: &str) -> Result<(), Box<dyn 
 
 async fn test_api_key_header(api_key: &str, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    let url = format!("{}/messages", base_url);
+    let url = format!("{base_url}/messages");
 
     let payload = serde_json::json!({
         "model": "claude-3-5-sonnet-latest",
@@ -102,7 +99,7 @@ async fn test_api_key_header(api_key: &str, base_url: &str) -> Result<(), Box<dy
         let json: serde_json::Value = response.json().await?;
         if let Some(content) = json.get("content").and_then(|c| c.as_array()).and_then(|a| a.first()) {
             if let Some(text) = content.get("text").and_then(|t| t.as_str()) {
-                println!("   📝 Response: {}", text);
+                println!("   📝 Response: {text}");
             }
         }
     } else {
@@ -114,7 +111,7 @@ async fn test_api_key_header(api_key: &str, base_url: &str) -> Result<(), Box<dy
 
 async fn test_direct_auth_header(api_key: &str, base_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    let url = format!("{}/messages", base_url);
+    let url = format!("{base_url}/messages");
 
     let payload = serde_json::json!({
         "model": "claude-3-5-sonnet-latest",
@@ -138,7 +135,7 @@ async fn test_direct_auth_header(api_key: &str, base_url: &str) -> Result<(), Bo
         let json: serde_json::Value = response.json().await?;
         if let Some(content) = json.get("content").and_then(|c| c.as_array()).and_then(|a| a.first()) {
             if let Some(text) = content.get("text").and_then(|t| t.as_str()) {
-                println!("   📝 Response: {}", text);
+                println!("   📝 Response: {text}");
             }
         }
     } else {
@@ -152,7 +149,7 @@ async fn test_custom_gateway_headers(api_key: &str, base_url: &str) -> Result<()
     println!("   Testing custom gateway headers:");
     
     let client = reqwest::Client::new();
-    let url = format!("{}/messages", base_url);
+    let url = format!("{base_url}/messages");
 
     let payload = serde_json::json!({
         "model": "claude-3-5-sonnet-latest", 
@@ -179,7 +176,7 @@ async fn test_custom_gateway_headers(api_key: &str, base_url: &str) -> Result<()
             .await?;
 
         if response.status().is_success() {
-            println!("   ✅ {} header works!", header_name);
+            println!("   ✅ {header_name} header works!");
             return Ok(());
         } else {
             println!("   ❌ {} header failed: HTTP {}", header_name, response.status());
