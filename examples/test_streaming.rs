@@ -61,7 +61,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 println!("❓ Unknown block type: {content_block:?}");
                             }
                         }
-                        io::stdout().flush().unwrap();
                     },
                     MessageStreamEvent::ContentBlockDelta { delta, index } => {
                         use anthropic_sdk::types::streaming::ContentBlockDelta;
@@ -88,18 +87,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 print!("📖");
                             },
                         }
-                        io::stdout().flush().unwrap();
                     },
                     MessageStreamEvent::MessageStop => {
                         println!("\n🛑 MessageStop received");
                         io::stdout().flush().unwrap();
-                        break;
                     },
                     _ => {
                         println!("❓ Other event: {event:?}");
-                        io::stdout().flush().unwrap();
                     }
                 }
+                io::stdout().flush().unwrap();
             },
             Err(e) => {
                 println!("❌ Stream error: {e}");

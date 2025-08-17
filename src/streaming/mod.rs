@@ -3,6 +3,16 @@
 //! This module provides the `MessageStream` struct which handles Server-Sent Events (SSE)
 //! from the Anthropic API, accumulates messages from incremental updates, and provides
 //! an event-driven API for processing streaming responses.
+//!
+//! Termination semantics
+//! - After a `MessageStop` event is emitted, the stream sets its internal `ended` flag.
+//! - Subsequent polls return `None`, so `while let Some(...)` loops terminate naturally without manual breaks.
+//! - This behavior aligns with the TypeScript SDK semantics.
+//!
+//! In practice:
+//! - `Stream::poll_next` yields `MessageStop` as the final item.
+//! - The following poll returns `None`.
+//! - `for_each` and `on_text` + `final_message()` patterns both complete automatically.
 
 pub mod events;
 
@@ -156,7 +166,6 @@ impl MessageStream {
         tokio::spawn(async move {
             use futures::StreamExt;
             let mut final_message: Option<crate::types::Message> = None;
-
             let mut completion_sender = Some(completion_sender); // Keep sender in Option
 
             while let Some(event_result) = http_stream.next().await {
@@ -309,15 +318,19 @@ impl MessageStream {
                                         )));
                                     }
                                 }
-                                // Send final event and break
-                                let _ = event_sender_clone.send(event);
-                                break;
                             }
                             _ => {}
                         }
 
-                        // Send event to broadcast channel for callbacks
-                        let _ = event_sender_clone.send(event);
+                        // Send event to broadcast channel for all events (including MessageStop)
+                        let event_clone = event.clone();
+                        let send_result = event_sender_clone.send(event_clone);
+
+                        // Log MessageStop event specifically for debugging
+                        if matches!(event, crate::types::MessageStreamEvent::MessageStop) {
+                            tracing::info!("Sent MessageStop event to broadcast channel, result: {send_result:?}");
+                            // break;
+                        }
                     }
                     Err(e) => {
                         *errored_clone.lock().unwrap() = true;
@@ -832,11 +845,6 @@ impl Stream for MessageStream {
 
         let this = self.project();
 
-        // Check if stream has already ended
-        if *this.ended.lock().unwrap() {
-            return std::task::Poll::Ready(None);
-        }
-
         match FuturesStream::poll_next(this.event_stream, cx) {
             std::task::Poll::Ready(Some(Ok(event))) => {
                 // Check if this is a MessageStop event
@@ -844,7 +852,7 @@ impl Stream for MessageStream {
                     // Mark stream as ended for future poll calls
                     *this.ended.lock().unwrap() = true;
                 }
-                // Return all other events normally to the user first
+                // Return the event to the user
                 std::task::Poll::Ready(Some(Ok(event)))
             }
             std::task::Poll::Ready(Some(Err(err))) => {
@@ -858,7 +866,14 @@ impl Stream for MessageStream {
                 *this.ended.lock().unwrap() = true;
                 std::task::Poll::Ready(None)
             }
-            std::task::Poll::Pending => std::task::Poll::Pending,
+            std::task::Poll::Pending => {
+                // If we've already yielded MessageStop, terminate the stream naturally
+                if *this.ended.lock().unwrap() {
+                    std::task::Poll::Ready(None)
+                } else {
+                    std::task::Poll::Pending
+                }
+            },
         }
     }
 }
