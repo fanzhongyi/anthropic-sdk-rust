@@ -14,8 +14,10 @@
 //! cargo run --example test_tool_multiturn_streaming
 //! ```
 
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use ignore::{overrides::OverrideBuilder, WalkBuilder};
+use std::fs;
+use std::path::PathBuf;
+
 use anthropic_sdk::Tool;
 use anthropic_sdk::{
     types::{
@@ -28,6 +30,8 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 pub struct EchoTool;
 
@@ -50,7 +54,6 @@ impl EchoTool {
     }
 }
 
-/// Simple fake weather tool that returns static weather data.
 pub struct WeatherTool;
 
 #[async_trait]
@@ -79,6 +82,311 @@ impl WeatherTool {
     }
 }
 
+pub struct GlobTool;
+
+#[async_trait]
+impl ToolFunction for GlobTool {
+    async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn Error + Send + Sync>> {
+        if !input.is_object() {
+            return Ok(ToolResult::error(TOOL_NAME, "Input must be an object"));
+        }
+        let o = input.as_object().unwrap();
+
+        // Parameters
+        let base_path_str = o.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let include_hidden = o
+            .get("include_hidden")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let respect_ignore_files = o
+            .get("respect_ignore_files")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let ignore_files: Vec<String> = o
+            .get("ignore_files")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_else(|| vec![".gitignore".to_string(), ".ignore".to_string()]);
+        let follow_symlinks = o
+            .get("follow_symlinks")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let recursive = o.get("recursive").and_then(|v| v.as_bool()).unwrap_or(true);
+
+        let patterns: Vec<String> = o
+            .get("patterns")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if patterns.is_empty() {
+            return Ok(ToolResult::error(
+                TOOL_NAME,
+                "'patterns' must be a non-empty array of strings",
+            ));
+        }
+
+        // Resolve and validate base path under cwd
+        let base_path = PathBuf::from(base_path_str);
+        if !base_path.exists() {
+            return Ok(ToolResult::error(
+                TOOL_NAME,
+                format!("Path not found: {}", base_path.display()),
+            ));
+        }
+        if !base_path.is_dir() {
+            return Ok(ToolResult::error(
+                TOOL_NAME,
+                format!("Path is not a directory: {}", base_path.display()),
+            ));
+        }
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let base_abs = match base_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                return Ok(ToolResult::error(
+                    TOOL_NAME,
+                    format!("Canonicalize base failed: {e}"),
+                ))
+            }
+        };
+        let cwd_abs = match cwd.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                return Ok(ToolResult::error(
+                    TOOL_NAME,
+                    format!("Canonicalize cwd failed: {e}"),
+                ))
+            }
+        };
+        if !base_abs.starts_with(&cwd_abs) {
+            return Ok(ToolResult::error(
+                TOOL_NAME,
+                format!(
+                    "Path {} is outside of cwd {}",
+                    base_abs.display(),
+                    cwd_abs.display()
+                ),
+            ));
+        }
+
+        // Build ripgrep-style overrides
+        let mut ob = OverrideBuilder::new(&base_path);
+        for pat in &patterns {
+            if let Err(e) = ob.add(pat) {
+                return Ok(ToolResult::error(
+                    TOOL_NAME,
+                    format!("Invalid pattern '{pat}': {e}"),
+                ));
+            }
+        }
+        let overrides = match ob.build() {
+            Ok(o) => o,
+            Err(e) => {
+                return Ok(ToolResult::error(
+                    TOOL_NAME,
+                    format!("Failed to build overrides: {e}"),
+                ))
+            }
+        };
+
+        // Build walker
+        let mut wb = WalkBuilder::new(&base_path);
+        wb.hidden(!include_hidden)
+            .git_ignore(respect_ignore_files)
+            .ignore(respect_ignore_files)
+            .parents(respect_ignore_files)
+            .follow_links(follow_symlinks)
+            .max_depth(if recursive { None } else { Some(1) })
+            .overrides(overrides);
+
+        if respect_ignore_files {
+            for f in &ignore_files {
+                let p = base_path.join(f);
+                if p.exists() {
+                    wb.add_ignore(p);
+                }
+            }
+        }
+
+        // Walk and collect matches
+        const MAX_MATCHES: usize = 5000;
+        let mut entries_json = Vec::new();
+        let mut truncated = false;
+
+        for dent in wb.build() {
+            if truncated {
+                break;
+            }
+            let dent = match dent {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let path = dent.path().to_path_buf();
+            if path == base_path {
+                continue;
+            }
+            let ty = match dent.file_type() {
+                Some(t) => t,
+                None => continue,
+            };
+            // Only emit files
+            if !ty.is_file() {
+                continue;
+            }
+
+            let file_name = match path.file_name().and_then(|s| s.to_str()) {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            let is_hidden = file_name.starts_with('.');
+            if is_hidden && !include_hidden {
+                continue;
+            }
+            let rel_path = match path.strip_prefix(&base_path) {
+                Ok(p) => p.to_string_lossy().to_string(),
+                Err(_) => file_name.clone(),
+            };
+            let meta = match fs::symlink_metadata(&path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            entries_json.push(json!({
+                "name": file_name,
+                "path": rel_path,
+                "kind": "file",
+                "size": meta.len(),
+                "is_hidden": is_hidden,
+            }));
+            if entries_json.len() >= MAX_MATCHES {
+                truncated = true;
+            }
+        }
+
+        let result = json!({
+            "root": base_path.to_string_lossy(),
+            "patterns": patterns,
+            "include_hidden": include_hidden,
+            "respect_ignore_files": respect_ignore_files,
+            "ignore_files": ignore_files,
+            "follow_symlinks": follow_symlinks,
+            "recursive": recursive,
+            "total_matches": entries_json.len(),
+            "truncated": truncated,
+            "entries": entries_json,
+        });
+
+        Ok(ToolResult::success_json(TOOL_NAME, result))
+    }
+
+    fn validate_input(&self, input: &Value) -> Result<(), Box<dyn Error + Send + Sync>> {
+        if !input.is_object() {
+            return Err("Input must be a JSON object".into());
+        }
+        let o = input.as_object().unwrap();
+        if let Some(v) = o.get("path") {
+            if !v.is_string() {
+                return Err("'path' must be a string".into());
+            }
+        }
+        if let Some(v) = o.get("include_hidden") {
+            if !v.is_boolean() {
+                return Err("'include_hidden' must be a boolean".into());
+            }
+        }
+        if let Some(v) = o.get("respect_ignore_files") {
+            if !v.is_boolean() {
+                return Err("'respect_ignore_files' must be a boolean".into());
+            }
+        }
+        if let Some(v) = o.get("ignore_files") {
+            let arr = v
+                .as_array()
+                .ok_or("'ignore_files' must be an array of strings")?;
+            if !arr.iter().all(|x| x.as_str().is_some()) {
+                return Err("'ignore_files' must be an array of strings".into());
+            }
+        }
+        if let Some(v) = o.get("follow_symlinks") {
+            if !v.is_boolean() {
+                return Err("'follow_symlinks' must be a boolean".into());
+            }
+        }
+        if let Some(v) = o.get("recursive") {
+            if !v.is_boolean() {
+                return Err("'recursive' must be a boolean".into());
+            }
+        }
+        if let Some(v) = o.get("patterns") {
+            let arr = v
+                .as_array()
+                .ok_or("'patterns' must be an array of strings")?;
+            if arr.is_empty() || !arr.iter().all(|x| x.as_str().is_some()) {
+                return Err("'patterns' must be a non-empty array of strings".into());
+            }
+        }
+        Ok(())
+    }
+
+    fn timeout_seconds(&self) -> u64 {
+        TIMEOUT_SECONDS
+    }
+}
+
+pub const TOOL_NAME: &str = "glob";
+pub const DESCRIPTION: &str = "Match files using glob patterns (read-only). Supports multiple patterns with negation and optional ignore files.";
+pub const TIMEOUT_SECONDS: u64 = 10;
+
+impl GlobTool {
+    pub fn definition() -> Tool {
+        Tool::new(TOOL_NAME, DESCRIPTION)
+            .parameter(
+                "path",
+                "string",
+                "Base directory to search. Must be under project cwd. Defaults to '.'",
+            )
+            .array_parameter(
+                "patterns",
+                "Glob patterns. Use leading '!' for exclusion. Example: ['**/*.rs', '!target/**']",
+                "string",
+            )
+            .parameter(
+                "include_hidden",
+                "boolean",
+                "Include entries whose names start with '.' (default: false)",
+            )
+            .parameter(
+                "respect_ignore_files",
+                "boolean",
+                "If true (default), read ignore files (see 'ignore_files') and apply their patterns.",
+            )
+            .array_parameter(
+                "ignore_files",
+                "Ignore files to read from the base path (default ['.gitignore', '.ignore']).",
+                "string",
+            )
+            .parameter(
+                "follow_symlinks",
+                "boolean",
+                "Follow symlinks when recursing (default: false).",
+            )
+            .parameter(
+                "recursive",
+                "boolean",
+                "Recurse into subdirectories when searching (default: true).",
+            )
+            .required("patterns")
+            .build()
+    }
+}
+
 /// Convenience helper that constructs a `ToolRegistry` pre-populated with the
 /// two demo tools above. Useful for quick tests.
 pub fn demo_registry() -> ToolRegistry {
@@ -97,7 +405,16 @@ pub fn demo_registry() -> ToolRegistry {
         .expect("failed to register weather tool");
 
     registry
+        .register("glob", GlobTool::definition(), Box::new(GlobTool))
+        .expect("Failed to register glob tool");
+
+    registry
 }
+
+// pub const TEST_QUERY: &str = "Echo hello! and tell me is there any shell script in current directory?";
+// pub const TEST_QUERY: &str = "Echo hello! and 帮我找下这个目录中所有的test开头 .rs结尾的文件";
+// pub const TEST_QUERY: &str = "告诉我现在目录下有哪些文件，这是个什么项目，最后帮我找下这个目录中的所有prompt.rs文件";
+pub const TEST_QUERY: &str = "帮我找下这个目录中的所有shell 脚本文件，不要查找子目录, 名字里包含git的不要";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -117,8 +434,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let registry = demo_registry();
     let tool_decls = registry.get_tool_definitions();
     println!("🔧 Tool registry contains {} tools", tool_decls.len());
+    for tool in tool_decls.clone().into_iter() {
+        println!("- {} {}", tool.name, tool.description);
+    }
 
-    // First, test basic streaming without tools to ensure it works
     println!("🌊 Testing basic streaming without tools...\n");
     let basic_stream = client
         .messages()
@@ -163,7 +482,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .create_stream(
             MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
                 .tools(tool_decls.clone())
-                .user("Echo hello! and tell me the weather in Beijing and Paris")
+                .user(TEST_QUERY)
                 .build(),
         )
         .await?;
@@ -195,7 +514,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .messages()
         .create(
             MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
-                .user("Echo hello! and tell me the weather in Beijing and Paris")
+                .user(TEST_QUERY)
                 .tools(tool_decls.clone())
                 .build(),
         )
@@ -224,7 +543,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("\n🌊 Testing streaming with tools...\n");
 
     let stream_params = MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
-        .user("Echo hello! and tell me the weather in Beijing and Paris")
+        .user(TEST_QUERY)
         .tools(tool_decls)
         .stream(true)
         .build();
@@ -416,7 +735,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Build follow-up message with tool results
     let follow_up_builder = MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
-        .user("Echo hello! and tell me the weather in Beijing and Paris")
+        .user(TEST_QUERY)
         .message(
             Role::Assistant,
             MessageContent::Blocks(assistant_content_blocks),
@@ -443,11 +762,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             MessageStreamEvent::MessageStop => {
                 println!("\n🏁 Conversation completed!");
             }
+            MessageStreamEvent::InputJson { partial_json, snapshot } => {
+                println!("🔧 Input JSON event: {partial_json} (snapshot: {snapshot})");
+            }
             _ => {}
         })
         .final_message()
         .await?;
 
+    println!("\n🌊 Final conversation: {final_follow_up:?}");
     println!("\n✨ Final conversation summary:");
     println!(
         "📊 Total tokens used: {}",

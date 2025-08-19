@@ -1,33 +1,40 @@
-//! Basic Demo to Exercise README Features
+//! Non-Streaming Multi-turn Tool Usage Demo
 //!
-//! This example is intended to be executed against either Anthropic's production
-//! endpoint or a compatible gateway (e.g. Compass). It showcases a subset of
-//! the feature snippets that appear in the README so you can quickly verify
-//! they compile **and** work end-to-end.
+//! This example demonstrates how to use Claude with tools in a streaming multi-turn conversation.
+//! It shows how to handle tool calls in real-time as they're being generated, execute them,
+//! and continue the conversation with the results.
+//!
+//! It also shows how to handle tool calls at final messages in the conversation.
 //!
 //! Run with:
 //! ```bash
 //! export ANTHROPIC_BASE_URL="http://compass.llm.shopee.io/compass-api"
 //! export ANTHROPIC_AUTH_METHOD="bearer"           # or "api_key" for normal usage
 //! export ANTHROPIC_API_KEY="your_token_here"      # required if AUTH_METHOD=api_key
-//! cargo run --example test_basic
+//! cargo run --example test_tool_multiturn
 //! ```
 
+use anthropic_sdk::Tool;
 use anthropic_sdk::{
     types::{
         ContentBlock, ContentBlockParam, ContentBlocksExt, MessageContent, MessageCreateBuilder,
-    }, Anthropic, Role, ToolFunction, ToolRegistry, ToolResult, ToolResultContent
+    },
+    Anthropic, Role, ToolFunction, ToolRegistry, ToolResult, ToolResultContent,
 };
-use anthropic_sdk::Tool;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::error::Error;
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 pub struct EchoTool;
 
 #[async_trait]
 impl ToolFunction for EchoTool {
-    async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        input: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
         Ok(ToolResult::success_json("echo", input))
     }
 }
@@ -41,12 +48,14 @@ impl EchoTool {
     }
 }
 
-/// Simple fake weather tool that returns static weather data.
 pub struct WeatherTool;
 
 #[async_trait]
 impl ToolFunction for WeatherTool {
-    async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        input: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
         let weather_data = json!({
             "location": input["location"].as_str().unwrap_or("Unknown"),
             "temperature": "80°C",
@@ -55,7 +64,6 @@ impl ToolFunction for WeatherTool {
             "wind": "5 mph"
         });
         Ok(ToolResult::success_json("weather", weather_data))
-        // Ok(ToolResult::error("weather", "No this place"))
     }
 }
 
@@ -78,7 +86,11 @@ pub fn demo_registry() -> ToolRegistry {
         .expect("failed to register echo tool");
 
     registry
-        .register("get_weather", WeatherTool::definition(), Box::new(WeatherTool))
+        .register(
+            "get_weather",
+            WeatherTool::definition(),
+            Box::new(WeatherTool),
+        )
         .expect("failed to register weather tool");
 
     registry
@@ -86,39 +98,45 @@ pub fn demo_registry() -> ToolRegistry {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::INFO)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)?;
 
-    println!("🧪 Basic Anthropic SDK Demo");
+    println!("🧪 Non-Streaming Multi-turn Tool Usage Demo");
     println!("{}", "=".repeat(60));
 
-    // Create client from environment (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_METHOD, etc.)
+    // Create client from environment
     let client = Anthropic::from_env()?;
     println!("✅ Client initialized successfully\n");
-
-    // let models = client.models().list(None).await?;
-    // for model in models.data {
-    //     println!("Model: {} ({})", model.display_name, model.id);
-    // }
 
     let registry = demo_registry();
     let tool_decls = registry.get_tool_definitions();
     println!("🔧 Tool registry contains {} tools", tool_decls.len());
 
-    let mut msg_builder = MessageCreateBuilder::new("claude-3-haiku@20240307", 256)
+    let mut msg_builder = MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
         .user("What's the weather like in Paris?")
         .tools(tool_decls);
 
-    let tool_msg = client.messages().create(msg_builder.clone().build()).await?;
+    let tool_msg = client
+        .messages()
+        .create(msg_builder.clone().build())
+        .await?;
 
     for block in &tool_msg.content {
         match block {
-            ContentBlock::ToolUse { name, input, .. } => {
+            ContentBlock::Text { text } => {
+                // println!("{block:?}");
+                println!("Text: {text}");
+            }
+            ContentBlock::ToolUse { id: _, name, input } => {
+                // println!("{block:?}");
                 println!("🔧 Claude requested tool '{name}' with input {input}");
             }
-            ContentBlock::Text { text } => {
-                println!("📝 Claude: {text}");
+            _ => {
+                println!("Other type {block:?}");
             }
-            _ => {}
         }
     }
 
@@ -129,27 +147,52 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map(|b| match b {
             ContentBlock::Text { text } => {
                 println!("text: {text}");
-                ContentBlockParam::Text { text: text.clone(), cache_control: None }
+                ContentBlockParam::Text {
+                    text: text.clone(),
+                    cache_control: None,
+                }
             }
-            ContentBlock::Image { source } => {
-                ContentBlockParam::Image { source: source.clone(), cache_control: None }
-            }
+            ContentBlock::Image { source } => ContentBlockParam::Image {
+                source: source.clone(),
+                cache_control: None,
+            },
             ContentBlock::ToolUse { id, name, input } => {
                 println!("tool_use: {id} {name} {input:?}");
-                ContentBlockParam::ToolUse { id: id.clone(), name: name.clone(), input: input.clone(), cache_control: None }
+                ContentBlockParam::ToolUse {
+                    id: id.clone(),
+                    name: name.clone(),
+                    input: input.clone(),
+                    cache_control: None,
+                }
             }
-            ContentBlock::ToolResult { tool_use_id, content, is_error } => {
-                ContentBlockParam::ToolResult { tool_use_id: tool_use_id.clone(), content: content.clone(), is_error: *is_error, cache_control: None }
-            }
-            ContentBlock::Thinking { thinking, signature } => {
-                ContentBlockParam::Thinking { thinking: thinking.clone(), signature: signature.clone(), cache_control: None }
-            }
-            ContentBlock::RedactedThinking { data } => {
-                ContentBlockParam::RedactedThinking { data: data.clone(), cache_control: None }
-            }
+            ContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                is_error,
+            } => ContentBlockParam::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                content: content.clone(),
+                is_error: *is_error,
+                cache_control: None,
+            },
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => ContentBlockParam::Thinking {
+                thinking: thinking.clone(),
+                signature: signature.clone(),
+                cache_control: None,
+            },
+            ContentBlock::RedactedThinking { data } => ContentBlockParam::RedactedThinking {
+                data: data.clone(),
+                cache_control: None,
+            },
         })
         .collect();
-    msg_builder = msg_builder.message(Role::Assistant, MessageContent::Blocks(assistant_content_blocks));
+    msg_builder = msg_builder.message(
+        Role::Assistant,
+        MessageContent::Blocks(assistant_content_blocks),
+    );
 
     // Check for tool calls.
     let mut pending_calls = Vec::new();
@@ -207,7 +250,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     msg_builder = msg_builder.message(Role::User, MessageContent::Blocks(tool_result_blocks));
 
-    let tool_msg_follow_up = client.messages().create(msg_builder.clone().build()).await?;
+    let tool_msg_follow_up = client
+        .messages()
+        .create(msg_builder.clone().build())
+        .await?;
 
     for block in &tool_msg_follow_up.content {
         match block {
