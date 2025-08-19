@@ -17,7 +17,7 @@ pub use messages::{
     Message, Role, ContentBlock, ImageSource, StopReason,
     MessageCreateParams, MessageParam, MessageContent, ContentBlockParam,
     MessageCreateBuilder, SystemContentBlock, SystemParam,
-    ContentBlocksExt,
+    ContentBlocksExt, ToolResultContentParam, ToolResultNestedBlockParam,
 };
 
 // Model types

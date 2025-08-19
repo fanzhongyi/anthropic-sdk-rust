@@ -71,6 +71,9 @@ once_cell = "1.0"           # Global static initialization
 # Date/time handling for batches
 chrono = { version = "0.4", features = ["serde"] }
 
+globset = "0.4"
+ignore = "0.4"
+
 # Optional cloud integrations (to be implemented in Phase 6)
 [features]
 default = []

@@ -269,6 +269,35 @@ pub enum MessageContent {
     Blocks(Vec<ContentBlockParam>),
 }
 
+/// Content for tool_result content field (string or array of blocks)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ToolResultContentParam {
+    Text(String),
+    Blocks(Vec<ToolResultNestedBlockParam>),
+}
+
+/// A limited set of content blocks allowed inside tool_result content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ToolResultNestedBlockParam {
+    #[serde(rename = "text")]
+    Text {
+        text: String,
+        /// Optional cache control for prompt caching
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<crate::types::shared::CacheControl>,
+    },
+
+    #[serde(rename = "image")]
+    Image {
+        source: ImageSource,
+        /// Optional cache control for prompt caching
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<crate::types::shared::CacheControl>,
+    },
+}
+
 /// Content block parameters for input messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -302,7 +331,7 @@ pub enum ContentBlockParam {
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,
-        content: Option<String>,
+        content: Option<ToolResultContentParam>,
         is_error: Option<bool>,
         /// Optional cache control for prompt caching
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -648,7 +677,7 @@ mod tests {
 
         let image_block = ContentBlockParam::image_base64("image/jpeg", "base64data");
         match image_block {
-            ContentBlockParam::Image { source } => match source {
+            ContentBlockParam::Image { source, .. } => match source {
                 ImageSource::Base64 { media_type, data } => {
                     assert_eq!(media_type, "image/jpeg");
                     assert_eq!(data, "base64data");

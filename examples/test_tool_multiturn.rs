@@ -17,7 +17,9 @@
 use anthropic_sdk::Tool;
 use anthropic_sdk::{
     types::{
-        ContentBlock, ContentBlockParam, ContentBlocksExt, MessageContent, MessageCreateBuilder,
+        ContentBlock, ContentBlockParam, ContentBlocksExt, ImageSource, MessageContent,
+        MessageCreateBuilder, ToolImageSource, ToolResultBlock, ToolResultContentParam,
+        ToolResultNestedBlockParam,
     },
     Anthropic, Role, ToolFunction, ToolRegistry, ToolResult, ToolResultContent,
 };
@@ -171,7 +173,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 is_error,
             } => ContentBlockParam::ToolResult {
                 tool_use_id: tool_use_id.clone(),
-                content: content.clone(),
+                content: content
+                    .as_ref()
+                    .map(|s| ToolResultContentParam::Text(s.clone())),
                 is_error: *is_error,
                 cache_control: None,
             },
@@ -236,15 +240,47 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let tool_result_blocks: Vec<ContentBlockParam> = results
         .into_iter()
-        .map(|tr| ContentBlockParam::ToolResult {
-            tool_use_id: tr.tool_use_id,
-            content: match tr.content {
-                ToolResultContent::Text(t) => Some(t),
-                ToolResultContent::Json(v) => Some(v.to_string()),
-                ToolResultContent::Blocks(_) => None, // simplify
-            },
-            is_error: tr.is_error,
-            cache_control: None,
+        .map(|tr| {
+            let content_param: Option<ToolResultContentParam> = match tr.content {
+                ToolResultContent::Text(t) => Some(ToolResultContentParam::Text(t)),
+                ToolResultContent::Json(v) => {
+                    // Render JSON as a single nested text block within Blocks for richer structure
+                    let pretty = serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string());
+                    Some(ToolResultContentParam::Blocks(vec![
+                        ToolResultNestedBlockParam::Text { text: pretty, cache_control: None }
+                    ]))
+                },
+                ToolResultContent::Blocks(blocks) => {
+                    // Map tool result blocks to nested tool_result content blocks supported by messages API
+                    let nested: Vec<ToolResultNestedBlockParam> = blocks
+                        .into_iter()
+                        .map(|b| match b {
+                            ToolResultBlock::Text { text } => ToolResultNestedBlockParam::Text {
+                                text,
+                                cache_control: None,
+                            },
+                            ToolResultBlock::Image { source } => {
+                                // Convert ToolImageSource -> messages::ImageSource
+                                match source {
+                                    ToolImageSource::Base64 { media_type, data } => {
+                                        ToolResultNestedBlockParam::Image {
+                                            source: ImageSource::Base64 { media_type, data },
+                                            cache_control: None,
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .collect();
+                    Some(ToolResultContentParam::Blocks(nested))
+                }
+            };
+            ContentBlockParam::ToolResult {
+                tool_use_id: tr.tool_use_id,
+                content: content_param,
+                is_error: tr.is_error,
+                cache_control: None,
+            }
         })
         .collect();
 
