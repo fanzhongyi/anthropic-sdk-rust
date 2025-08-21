@@ -76,7 +76,7 @@ pub trait ToolFunction: Send + Sync {
     /// # Returns
     /// A `ToolResult` containing the execution result, or an error if execution fails.
     async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn Error + Send + Sync>>;
-    
+
     /// Validate input before execution (optional).
     ///
     /// Override this method to provide custom validation logic beyond
@@ -84,13 +84,21 @@ pub trait ToolFunction: Send + Sync {
     fn validate_input(&self, _input: &Value) -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(())
     }
-    
+
     /// Get the tool's timeout in seconds (optional).
     ///
     /// Override to set a custom timeout for this tool.
     /// Default is 30 seconds.
     fn timeout_seconds(&self) -> u64 {
         30
+    }
+
+    /// Whether this tool is read-only (concurrency-safe).
+    ///
+    /// Read-only tools should not mutate external state and can be executed in parallel
+    /// within a single assistant turn. The default is conservative (false).
+    fn is_read_only(&self) -> bool {
+        false
     }
 }
 
