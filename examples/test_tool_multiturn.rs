@@ -98,6 +98,9 @@ pub fn demo_registry() -> ToolRegistry {
     registry
 }
 
+// pub const TEST_QUERY: &str = "帮我找下这个目录中的所有shell 脚本文件，不要查找子目录, 名字里包含git的不要，最后猜测下这些shell文件干嘛用的？";
+pub const TEST_QUERY: &str = "Echo hello! and tell me the weather in Beijing and Paris";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // tracing_subscriber::fmt::init();
@@ -118,7 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("🔧 Tool registry contains {} tools", tool_decls.len());
 
     let mut msg_builder = MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
-        .user("What's the weather like in Paris?")
+        .user(TEST_QUERY)
         .tools(tool_decls);
 
     let tool_msg = client
@@ -154,10 +157,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     cache_control: None,
                 }
             }
-            ContentBlock::Image { source } => ContentBlockParam::Image {
-                source: source.clone(),
-                cache_control: None,
-            },
+            ContentBlock::Image { source } => {
+                println!("Image source");
+                ContentBlockParam::Image {
+                    source: source.clone(),
+                    cache_control: None,
+                }
+            }
             ContentBlock::ToolUse { id, name, input } => {
                 println!("tool_use: {id} {name} {input:?}");
                 ContentBlockParam::ToolUse {
@@ -171,28 +177,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 tool_use_id,
                 content,
                 is_error,
-            } => ContentBlockParam::ToolResult {
-                tool_use_id: tool_use_id.clone(),
-                content: content
-                    .as_ref()
-                    .map(|s| ToolResultContentParam::Text(s.clone())),
-                is_error: *is_error,
-                cache_control: None,
-            },
+            } => {
+                println!("ToolResult {tool_use_id} {content:?} {is_error:?}");
+                ContentBlockParam::ToolResult {
+                    tool_use_id: tool_use_id.clone(),
+                    content: content
+                        .as_ref()
+                        .map(|s| ToolResultContentParam::Text(s.clone())),
+                    is_error: *is_error,
+                    cache_control: None,
+                }
+            }
             ContentBlock::Thinking {
                 thinking,
                 signature,
-            } => ContentBlockParam::Thinking {
-                thinking: thinking.clone(),
-                signature: signature.clone(),
-                cache_control: None,
-            },
-            ContentBlock::RedactedThinking { data } => ContentBlockParam::RedactedThinking {
-                data: data.clone(),
-                cache_control: None,
-            },
+            } => {
+                println!("Thinking {thinking:?} {signature:?}");
+                ContentBlockParam::Thinking {
+                    thinking: thinking.clone(),
+                    signature: signature.clone(),
+                    cache_control: None,
+                }
+            }
+            ContentBlock::RedactedThinking { data } => {
+                println!("RedactedThinking {data:?}");
+                ContentBlockParam::RedactedThinking {
+                    data: data.clone(),
+                    cache_control: None,
+                }
+            }
         })
         .collect();
+
     msg_builder = msg_builder.message(
         Role::Assistant,
         MessageContent::Blocks(assistant_content_blocks),
@@ -205,6 +221,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             pending_calls.push((id.clone(), name.clone(), input.clone()));
         }
     }
+    println!("pending_calls: {pending_calls:?}");
 
     if pending_calls.is_empty() {
         // No tool calls ⇒ final answer.
@@ -247,9 +264,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     // Render JSON as a single nested text block within Blocks for richer structure
                     let pretty = serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string());
                     Some(ToolResultContentParam::Blocks(vec![
-                        ToolResultNestedBlockParam::Text { text: pretty, cache_control: None }
+                        ToolResultNestedBlockParam::Text {
+                            text: pretty,
+                            cache_control: None,
+                        },
                     ]))
-                },
+                }
                 ToolResultContent::Blocks(blocks) => {
                     // Map tool result blocks to nested tool_result content blocks supported by messages API
                     let nested: Vec<ToolResultNestedBlockParam> = blocks

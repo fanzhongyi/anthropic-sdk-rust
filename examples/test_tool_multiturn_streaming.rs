@@ -21,11 +21,20 @@ use std::path::PathBuf;
 use anthropic_sdk::Tool;
 use anthropic_sdk::{
     types::{
-        ContentBlock, ContentBlockDelta, ContentBlockParam, ContentBlocksExt, MessageContent,
-        MessageCreateBuilder, MessageStreamEvent, ToolUse as ToolUseBlock,
+        ContentBlock,
+        ContentBlockDelta,
+        ContentBlockParam,
+        ContentBlocksExt,
+        ImageSource,
+        MessageContent,
+        MessageCreateBuilder,
+        MessageStreamEvent,
+        ToolImageSource,
+        ToolResultBlock,
         // Added for richer tool_result content mapping
-        ToolResultContentParam, ToolResultNestedBlockParam, ToolResultBlock,
-        ImageSource, ToolImageSource,
+        ToolResultContentParam,
+        ToolResultNestedBlockParam,
+        ToolUse as ToolUseBlock,
     },
     Anthropic, Role, ToolFunction, ToolRegistry, ToolResult, ToolResultContent,
 };
@@ -417,7 +426,8 @@ pub fn demo_registry() -> ToolRegistry {
 // pub const TEST_QUERY: &str = "Echo hello! and tell me is there any shell script in current directory?";
 // pub const TEST_QUERY: &str = "Echo hello! and 帮我找下这个目录中所有的test开头 .rs结尾的文件";
 // pub const TEST_QUERY: &str = "告诉我现在目录下有哪些文件，这是个什么项目，最后帮我找下这个目录中的所有prompt.rs文件";
-pub const TEST_QUERY: &str = "帮我找下这个目录中的所有shell 脚本文件，不要查找子目录, 名字里包含git的不要，最后猜测下这些shell文件干嘛用的？";
+// pub const TEST_QUERY: &str = "帮我找下这个目录中的所有shell 脚本文件，不要查找子目录, 名字里包含git的不要，最后猜测下这些shell文件干嘛用的？";
+pub const TEST_QUERY: &str = "Echo hello! and tell me the weather in Beijing and Paris";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -441,7 +451,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("- {} {}", tool.name, tool.description);
     }
 
-    println!("🌊 Testing basic streaming without tools...\n");
+    println!("\n🌊 Testing basic streaming without tools...\n");
     let basic_stream = client
         .messages()
         .create_stream(
@@ -479,7 +489,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    println!("🌊 Testing basic streaming with tools fetching final message...\n");
+    println!("\n🌊 Testing basic streaming with tools fetching final message...\n");
     let basic_stream = client
         .messages()
         .create_stream(
@@ -512,7 +522,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Now test with tools - use non-streaming first to establish baseline
-    println!("🔧 Testing non-streaming tool usage first...\n");
+    println!("\n🔧 Testing non-streaming tool usage first...\n");
     let non_stream_msg = client
         .messages()
         .create(
@@ -522,11 +532,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .build(),
         )
         .await?;
-
-    println!(
-        "Non-streaming response has {} content blocks",
-        non_stream_msg.content.len()
-    );
 
     for (i, block) in non_stream_msg.content.iter().enumerate() {
         match block {
@@ -584,7 +589,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     content_block: ContentBlock::ToolUse { id, name, input },
                     index,
                 } => {
-                    println!("🔧 Tool use started: {name} ({id}) at index {index}");
+                    println!("🔧 Tool use started: {name} ({id}) ({input}) at index {index}");
                     let tool_use = ToolUseBlock {
                         id: id.clone(),
                         name: name.clone(),
@@ -666,8 +671,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     if completed_tools.is_empty() {
         println!("❌ No tool calls detected in streaming response!");
-        println!("Final response: {}", stream_response.content.get_text());
+        println!(
+            "Final response in text: {}",
+            stream_response.content.get_text()
+        );
         return Ok(());
+    } else {
+        println!("streaming_response blocks: {stream_response:?}");
     }
 
     println!(
@@ -731,9 +741,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     // Render JSON as a single nested text block within Blocks for richer structure
                     let pretty = serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string());
                     Some(ToolResultContentParam::Blocks(vec![
-                        ToolResultNestedBlockParam::Text { text: pretty, cache_control: None }
+                        ToolResultNestedBlockParam::Text {
+                            text: pretty,
+                            cache_control: None,
+                        },
                     ]))
-                },
+                }
                 ToolResultContent::Blocks(blocks) => {
                     // Map tool result blocks to nested tool_result content blocks supported by messages API
                     let nested: Vec<ToolResultNestedBlockParam> = blocks
@@ -797,7 +810,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             MessageStreamEvent::MessageStop => {
                 println!("\n🏁 Conversation completed!");
             }
-            MessageStreamEvent::InputJson { partial_json, snapshot } => {
+            MessageStreamEvent::InputJson {
+                partial_json,
+                snapshot,
+            } => {
                 println!("🔧 Input JSON event: {partial_json} (snapshot: {snapshot})");
             }
             _ => {}
