@@ -428,6 +428,8 @@ pub fn demo_registry() -> ToolRegistry {
 // pub const TEST_QUERY: &str = "告诉我现在目录下有哪些文件，这是个什么项目，最后帮我找下这个目录中的所有prompt.rs文件";
 // pub const TEST_QUERY: &str = "帮我找下这个目录中的所有shell 脚本文件，不要查找子目录, 名字里包含git的不要，最后猜测下这些shell文件干嘛用的？";
 pub const TEST_QUERY: &str = "Echo hello! and tell me the weather in Beijing and Paris";
+// pub const MODEL: &str = "claude-3-5-haiku@20241022";
+pub const MODEL: &str = "claude-sonnet-4@20250514";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -455,7 +457,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let basic_stream = client
         .messages()
         .create_stream(
-            MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
+            MessageCreateBuilder::new(MODEL, 256)
                 .user("Say hello!")
                 .build(),
         )
@@ -493,7 +495,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let basic_stream = client
         .messages()
         .create_stream(
-            MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
+            MessageCreateBuilder::new(MODEL, 256)
                 .tools(tool_decls.clone())
                 .user(TEST_QUERY)
                 .build(),
@@ -526,7 +528,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let non_stream_msg = client
         .messages()
         .create(
-            MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
+            MessageCreateBuilder::new(MODEL, 256)
                 .user(TEST_QUERY)
                 .tools(tool_decls.clone())
                 .build(),
@@ -550,7 +552,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Now try streaming with tools - use the proper streaming API
     println!("\n🌊 Testing streaming with tools...\n");
 
-    let stream_params = MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
+    let stream_params = MessageCreateBuilder::new(MODEL, 256)
         .user(TEST_QUERY)
         .tools(tool_decls)
         .stream(true)
@@ -617,13 +619,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 MessageStreamEvent::InputJson {
                     partial_json,
-                    snapshot,
                 } => {
                     println!(
-                        "🔧 Input JSON event: {partial_json} (snapshot: {})",
-                        serde_json::to_string(&snapshot).unwrap_or_else(|_| "invalid".to_string())
+                        "🔧 Input JSON event: {partial_json}"
                     );
-                    // This is an independent event that provides JSON parsing snapshots
+                    // This is an independent event that provides incremental JSON parsing info
                     // It's informational and doesn't need to update specific tool indices
                 }
                 MessageStreamEvent::ContentBlockStop {
@@ -782,7 +782,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .collect();
 
     // Build follow-up message with tool results
-    let follow_up_builder = MessageCreateBuilder::new("claude-sonnet-4@20250514", 256)
+    let follow_up_builder = MessageCreateBuilder::new(MODEL, 256)
         .user(TEST_QUERY)
         .message(
             Role::Assistant,
@@ -812,9 +812,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             MessageStreamEvent::InputJson {
                 partial_json,
-                snapshot,
             } => {
-                println!("🔧 Input JSON event: {partial_json} (snapshot: {snapshot})");
+                println!("🔧 Input JSON event: {partial_json}");
             }
             _ => {}
         })

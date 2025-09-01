@@ -448,7 +448,10 @@ mod tests {
         assert_eq!(request.body.model, "claude-3-5-sonnet-latest");
         assert_eq!(request.body.max_tokens, 1024);
         assert_eq!(request.body.messages.len(), 1);
-        assert_eq!(request.body.system, Some("You are a helpful assistant".to_string()));
+        assert!(matches!(
+            request.body.system,
+            Some(crate::types::messages::SystemParam::Text(ref s)) if s == "You are a helpful assistant"
+        ));
         assert_eq!(request.body.temperature, Some(0.7));
     }
 

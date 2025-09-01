@@ -189,7 +189,7 @@ macro_rules! tool_function {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Tool, ToolResult};
+    use crate::types::ToolResult;
     use serde_json::json;
 
     struct TestTool;

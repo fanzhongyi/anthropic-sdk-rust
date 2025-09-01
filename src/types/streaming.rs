@@ -74,13 +74,11 @@ pub enum MessageStreamEvent {
 
     /// Event when thinking content is generated (independent event).
     ///
-    /// This provides complete thinking snapshots during extended reasoning.
+    /// This provides thinking content during extended reasoning.
     #[serde(rename = "thinking")]
     Thinking {
         /// The thinking content
         thinking: String,
-        /// Snapshot of complete thinking so far
-        snapshot: String,
     },
 
     /// Event when signature is updated (independent event).
@@ -94,13 +92,11 @@ pub enum MessageStreamEvent {
 
     /// Event when text content is generated (independent event).
     ///
-    /// This provides complete text snapshots during generation.
+    /// This provides text content during generation.
     #[serde(rename = "text")]
     Text {
         /// The text content
         text: String,
-        /// Snapshot of complete text so far
-        snapshot: String,
     },
 
     /// Event when input JSON is updated (independent event).
@@ -110,8 +106,6 @@ pub enum MessageStreamEvent {
     InputJson {
         /// The partial JSON string
         partial_json: String,
-        /// Snapshot of parsed JSON so far
-        snapshot: serde_json::Value,
     },
 }
 
@@ -375,4 +369,4 @@ mod tests {
             assert_eq!(delta, parsed);
         }
     }
-} 
+}

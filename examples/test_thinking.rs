@@ -14,6 +14,8 @@ use futures::StreamExt;
 use std::error::Error;
 use std::io::{self, Write};
 
+pub const MODEL: &str = "claude-sonnet-4@20250514";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
@@ -37,7 +39,7 @@ async fn test_non_streaming_thinking(client: &Anthropic) -> Result<(), Box<dyn E
     println!("📤 Sending non-streaming thinking request...");
 
     let message = client.messages().create(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 2048)
+        MessageCreateBuilder::new(MODEL, 2048)
             .thinking(1024) // Minimum thinking budget required
             .user("What is 2+2? Think step by step.")
             .build()
@@ -71,7 +73,7 @@ async fn test_streaming_thinking(client: &Anthropic) -> Result<(), Box<dyn Error
     println!("📤 Sending streaming thinking request...");
 
     let stream = client.messages().create_stream(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 2048)
+        MessageCreateBuilder::new(MODEL, 2048)
             .thinking(1024) // Minimum thinking budget required
             .user("What is 3+3? Think step by step.")
             .stream(true)
@@ -134,20 +136,23 @@ async fn test_streaming_thinking(client: &Anthropic) -> Result<(), Box<dyn Error
                             }
                         }
                     },
-                    MessageStreamEvent::ContentBlockStop { index } => {
+                    MessageStreamEvent::ContentBlockStop { index, .. } => {
                         println!("content_block_stop[{index}]");
                     },
-                    MessageStreamEvent::Thinking { thinking, snapshot } => {
+                    MessageStreamEvent::Thinking { thinking } => {
                         thinking_events += 1;
-                        println!("thinking event: {} (snapshot len: {})", thinking, snapshot.len());
+                        println!("thinking event: {}", thinking);
                     },
                     MessageStreamEvent::Signature { signature } => {
                         signature_events += 1;
                         println!("signature event: {signature}");
                     },
-                    MessageStreamEvent::Text { text, snapshot } => {
+                    MessageStreamEvent::Text { text } => {
                         text_events += 1;
-                        println!("text event: {} (snapshot len: {})", text, snapshot.len());
+                        println!("text event: {}", text);
+                    },
+                    MessageStreamEvent::InputJson { partial_json } => {
+                        println!("input_json: {}", partial_json);
                     },
                     MessageStreamEvent::MessageDelta { .. } => {
                         println!("message_delta");

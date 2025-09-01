@@ -16,16 +16,16 @@
 
 pub mod events;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use futures::Stream;
 use pin_project::pin_project;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, oneshot};
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::types::{
-    Message, MessageStreamEvent, ContentBlock, ContentBlockDelta,
-    AnthropicError, Result
+    AnthropicError, ContentBlock, ContentBlockDelta, Message, MessageStreamEvent, Result, Role,
+    Usage,
 };
 
 use self::events::{EventHandler, EventType};
@@ -95,6 +95,9 @@ pub struct MessageStream {
     /// Event handlers for different event types
     event_handlers: Arc<Mutex<HashMap<EventType, Vec<EventHandler>>>>,
 
+    /// Buffer for accumulating partial JSON for each tool use by (message_index, tool_id)
+    tool_json_buffers: Arc<Mutex<HashMap<(usize, String), String>>>,
+
     /// Broadcast channel for distributing events to handlers
     event_sender: broadcast::Sender<MessageStreamEvent>,
 
@@ -131,6 +134,7 @@ impl MessageStream {
         Self {
             current_message: Arc::new(Mutex::new(None)),
             event_handlers: Arc::new(Mutex::new(HashMap::new())),
+            tool_json_buffers: Arc::new(Mutex::new(HashMap::new())),
             event_sender,
             event_stream: BroadcastStream::new(event_receiver),
             completion_sender: Some(completion_sender),
@@ -147,25 +151,29 @@ impl MessageStream {
     ///
     /// This connects a real HTTP stream to the MessageStream, providing
     /// proper streaming functionality for real-time response processing.
-    pub fn from_http_stream(mut http_stream: crate::http::streaming::HttpStreamClient) -> Result<Self> {
+    pub fn from_http_stream(
+        mut http_stream: crate::http::streaming::HttpStreamClient,
+    ) -> Result<Self> {
         let (event_sender, event_receiver) = broadcast::channel(1000);
         let (completion_sender, completion_receiver) = oneshot::channel();
 
         let current_message = Arc::new(Mutex::new(None));
         let ended = Arc::new(Mutex::new(false));
         let errored = Arc::new(Mutex::new(false));
+        let tool_json_buffers = Arc::new(Mutex::new(HashMap::new()));
         let request_id = http_stream.request_id().map(|s| s.to_string());
 
         // Clone references for the background task
         let current_message_clone = current_message.clone();
         let ended_clone = ended.clone();
         let errored_clone = errored.clone();
+        let tool_json_buffers_clone = tool_json_buffers.clone();
         let event_sender_clone = event_sender.clone();
 
         // Spawn task to process HTTP stream events
         tokio::spawn(async move {
             use futures::StreamExt;
-            let mut final_message: Option<crate::types::Message> = None;
+            let mut final_message: Option<Message> = None;
             let mut completion_sender = Some(completion_sender); // Keep sender in Option
 
             while let Some(event_result) = http_stream.next().await {
@@ -173,47 +181,66 @@ impl MessageStream {
                     Ok(event) => {
                         // Update current message state
                         match &event {
-                            crate::types::MessageStreamEvent::MessageStart { message } => {
+                            MessageStreamEvent::MessageStart { message } => {
                                 *current_message_clone.lock().unwrap() = Some(message.clone());
                                 final_message = Some(message.clone());
                             }
-                            crate::types::MessageStreamEvent::ContentBlockStart { content_block, index } => {
+                            MessageStreamEvent::ContentBlockStart {
+                                content_block,
+                                index,
+                            } => {
                                 if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
                                     while msg.content.len() <= *index {
-                                        msg.content.push(crate::types::ContentBlock::Text { text: String::new() });
+                                        msg.content.push(ContentBlock::Text {
+                                            text: String::new(),
+                                        });
                                     }
                                     msg.content[*index] = content_block.clone();
                                 }
                                 if let Some(ref mut msg) = final_message.as_mut() {
                                     while msg.content.len() <= *index {
-                                        msg.content.push(crate::types::ContentBlock::Text { text: String::new() });
+                                        msg.content.push(ContentBlock::Text {
+                                            text: String::new(),
+                                        });
                                     }
                                     msg.content[*index] = content_block.clone();
                                 }
                             }
-                            crate::types::MessageStreamEvent::ContentBlockDelta { delta, index } => {
+                            MessageStreamEvent::ContentBlockDelta { delta, index } => {
                                 if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
                                     if let Some(content_block) = msg.content.get_mut(*index) {
                                         match (content_block, delta) {
-                                            (crate::types::ContentBlock::Text { text },
-                                             crate::types::ContentBlockDelta::TextDelta { text: delta_text }) => {
+                                            (
+                                                ContentBlock::Text { text },
+                                                ContentBlockDelta::TextDelta { text: delta_text },
+                                            ) => {
                                                 text.push_str(delta_text);
                                             }
-                                            (crate::types::ContentBlock::ToolUse { input, .. },
-                                             crate::types::ContentBlockDelta::InputJsonDelta { partial_json }) => {
-                                                // For tool use, accumulate JSON properly
-                                                // partial_json represents the current complete state
-                                                if let Ok(parsed) = serde_json::from_str(partial_json) {
+                                            (
+                                                ContentBlock::ToolUse { input, id, .. },
+                                                ContentBlockDelta::InputJsonDelta { partial_json },
+                                            ) => {
+                                                // Accumulate partial JSON fragments properly
+                                                let buffer_key = (*index, id.clone());
+                                                let mut buffers =
+                                                    tool_json_buffers_clone.lock().unwrap();
+
+                                                // Append the partial_json to the accumulated buffer
+                                                let accumulated_json = buffers
+                                                    .entry(buffer_key)
+                                                    .or_insert_with(String::new);
+                                                accumulated_json.push_str(partial_json);
+
+                                                // Try to parse the accumulated JSON
+                                                if let Ok(parsed) =
+                                                    serde_json::from_str(accumulated_json)
+                                                {
                                                     *input = parsed;
                                                 } else {
-                                                    // If parsing fails, try to fix common JSON issues
-                                                    let fixed_json = if !partial_json.ends_with('}') && !partial_json.ends_with(']') {
-                                                        format!("{}{}", partial_json, "}")
-                                                    } else {
-                                                        partial_json.clone()
-                                                    };
-                                                    *input = serde_json::from_str(&fixed_json)
-                                                        .unwrap_or_else(|_| serde_json::Value::String(partial_json.clone()));
+                                                    // Keep the accumulated string as-is for now, will be parsed when complete
+                                                    *input = serde_json::Value::String(
+                                                        accumulated_json.clone(),
+                                                    );
                                                 }
                                             }
                                             _ => {}
@@ -224,22 +251,45 @@ impl MessageStream {
                                 if let Some(ref mut msg) = final_message.as_mut() {
                                     if let Some(content_block) = msg.content.get_mut(*index) {
                                         match (content_block, delta) {
-                                            (crate::types::ContentBlock::Text { text },
-                                             crate::types::ContentBlockDelta::TextDelta { text: delta_text }) => {
+                                            (
+                                                ContentBlock::Text { text },
+                                                ContentBlockDelta::TextDelta { text: delta_text },
+                                            ) => {
                                                 text.push_str(delta_text);
                                             }
-                                            (crate::types::ContentBlock::ToolUse { input, .. },
-                                             crate::types::ContentBlockDelta::InputJsonDelta { partial_json }) => {
-                                                if let Ok(parsed) = serde_json::from_str(partial_json) {
-                                                    *input = parsed;
-                                                } else {
-                                                    let fixed_json = if !partial_json.ends_with('}') && !partial_json.ends_with(']') {
-                                                        format!("{}{}", partial_json, "}")
+                                            (
+                                                ContentBlock::ToolUse { input, id, .. },
+                                                ContentBlockDelta::InputJsonDelta { partial_json },
+                                            ) => {
+                                                // Use the same buffer for final_message - get the accumulated JSON
+                                                let buffer_key = (*index, id.clone());
+                                                let buffers =
+                                                    tool_json_buffers_clone.lock().unwrap();
+
+                                                if let Some(accumulated_json) =
+                                                    buffers.get(&buffer_key)
+                                                {
+                                                    // Try to parse the accumulated JSON
+                                                    if let Ok(parsed) =
+                                                        serde_json::from_str(accumulated_json)
+                                                    {
+                                                        *input = parsed;
                                                     } else {
-                                                        partial_json.clone()
-                                                    };
-                                                    *input = serde_json::from_str(&fixed_json)
-                                                        .unwrap_or_else(|_| serde_json::Value::String(partial_json.clone()));
+                                                        *input = serde_json::Value::String(
+                                                            accumulated_json.clone(),
+                                                        );
+                                                    }
+                                                } else {
+                                                    // Fallback: try parsing the current partial_json directly
+                                                    if let Ok(parsed) =
+                                                        serde_json::from_str(partial_json)
+                                                    {
+                                                        *input = parsed;
+                                                    } else {
+                                                        *input = serde_json::Value::String(
+                                                            partial_json.clone(),
+                                                        );
+                                                    }
                                                 }
                                             }
                                             _ => {}
@@ -247,7 +297,7 @@ impl MessageStream {
                                     }
                                 }
                             }
-                            crate::types::MessageStreamEvent::MessageDelta { delta, usage } => {
+                            MessageStreamEvent::MessageDelta { delta, usage } => {
                                 if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
                                     if let Some(stop_reason) = &delta.stop_reason {
                                         msg.stop_reason = Some(stop_reason.clone());
@@ -262,8 +312,11 @@ impl MessageStream {
                                     if let Some(cache_creation) = &usage.cache_creation {
                                         msg.usage.cache_creation = Some(cache_creation.clone());
                                     }
-                                    if let Some(cache_creation_tokens) = usage.cache_creation_input_tokens {
-                                        msg.usage.cache_creation_input_tokens = Some(cache_creation_tokens);
+                                    if let Some(cache_creation_tokens) =
+                                        usage.cache_creation_input_tokens
+                                    {
+                                        msg.usage.cache_creation_input_tokens =
+                                            Some(cache_creation_tokens);
                                     }
                                     if let Some(cache_read_tokens) = usage.cache_read_input_tokens {
                                         msg.usage.cache_read_input_tokens = Some(cache_read_tokens);
@@ -283,38 +336,42 @@ impl MessageStream {
                                     if let Some(cache_creation) = &usage.cache_creation {
                                         msg.usage.cache_creation = Some(cache_creation.clone());
                                     }
-                                    if let Some(cache_creation_tokens) = usage.cache_creation_input_tokens {
-                                        msg.usage.cache_creation_input_tokens = Some(cache_creation_tokens);
+                                    if let Some(cache_creation_tokens) =
+                                        usage.cache_creation_input_tokens
+                                    {
+                                        msg.usage.cache_creation_input_tokens =
+                                            Some(cache_creation_tokens);
                                     }
                                     if let Some(cache_read_tokens) = usage.cache_read_input_tokens {
                                         msg.usage.cache_read_input_tokens = Some(cache_read_tokens);
                                     }
                                 }
                             }
-                            crate::types::MessageStreamEvent::ContentBlockStop { index, content_block } => {
+                            MessageStreamEvent::ContentBlockStop {
+                                index,
+                                content_block: Some(final_content_block),
+                            } => {
                                 // If the event contains a complete content_block, use it to update the final state
-                                if let Some(final_content_block) = content_block {
-                                    if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
-                                        if let Some(existing_block) = msg.content.get_mut(*index) {
-                                            *existing_block = final_content_block.clone();
-                                        }
+                                if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
+                                    if let Some(existing_block) = msg.content.get_mut(*index) {
+                                        *existing_block = final_content_block.clone();
                                     }
-                                    if let Some(ref mut msg) = final_message.as_mut() {
-                                        if let Some(existing_block) = msg.content.get_mut(*index) {
-                                            *existing_block = final_content_block.clone();
-                                        }
+                                }
+                                if let Some(ref mut msg) = final_message.as_mut() {
+                                    if let Some(existing_block) = msg.content.get_mut(*index) {
+                                        *existing_block = final_content_block.clone();
                                     }
                                 }
                             }
-                            crate::types::MessageStreamEvent::MessageStop => {
+                            MessageStreamEvent::MessageStop => {
                                 *ended_clone.lock().unwrap() = true;
                                 // Send the final message if we have a sender
                                 if let Some(sender) = completion_sender.take() {
                                     if let Some(message) = final_message.clone() {
                                         let _ = sender.send(Ok(message));
                                     } else {
-                                        let _ = sender.send(Err(crate::types::AnthropicError::StreamError(
-                                            "Stream ended without message".to_string()
+                                        let _ = sender.send(Err(AnthropicError::StreamError(
+                                            "Stream ended without message".to_string(),
                                         )));
                                     }
                                 }
@@ -327,9 +384,8 @@ impl MessageStream {
                         let send_result = event_sender_clone.send(event_clone);
 
                         // Log MessageStop event specifically for debugging
-                        if matches!(event, crate::types::MessageStreamEvent::MessageStop) {
+                        if matches!(event, MessageStreamEvent::MessageStop) {
                             tracing::info!("Sent MessageStop event to broadcast channel, result: {send_result:?}");
-                            // break;
                         }
                     }
                     Err(e) => {
@@ -346,6 +402,7 @@ impl MessageStream {
         Ok(Self {
             current_message,
             event_handlers: Arc::new(Mutex::new(HashMap::new())),
+            tool_json_buffers,
             event_sender,
             event_stream: BroadcastStream::new(event_receiver),
             completion_sender: None, // Already consumed by the task
@@ -403,7 +460,10 @@ impl MessageStream {
     where
         F: Fn(&MessageStreamEvent, &Message) + Send + Sync + 'static,
     {
-        self.on(EventType::StreamEvent, EventHandler::StreamEvent(Box::new(callback)))
+        self.on(
+            EventType::StreamEvent,
+            EventHandler::StreamEvent(Box::new(callback)),
+        )
     }
 
     /// Register a callback for when a complete message is received.
@@ -421,7 +481,10 @@ impl MessageStream {
     where
         F: Fn(&Message) + Send + Sync + 'static,
     {
-        self.on(EventType::Message, EventHandler::Message(Box::new(callback)))
+        self.on(
+            EventType::Message,
+            EventHandler::Message(Box::new(callback)),
+        )
     }
 
     /// Register a callback for when the final message is complete.
@@ -439,7 +502,10 @@ impl MessageStream {
     where
         F: Fn(&Message) + Send + Sync + 'static,
     {
-        self.on(EventType::FinalMessage, EventHandler::FinalMessage(Box::new(callback)))
+        self.on(
+            EventType::FinalMessage,
+            EventHandler::FinalMessage(Box::new(callback)),
+        )
     }
 
     /// Register a callback for errors.
@@ -496,12 +562,12 @@ impl MessageStream {
         let default_message = Message {
             id: String::new(),
             type_: "message".to_string(),
-            role: crate::types::Role::Assistant,
+            role: Role::Assistant,
             content: vec![],
             model: String::new(),
             stop_reason: None,
             stop_sequence: None,
-            usage: crate::types::Usage {
+            usage: Usage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_creation_input_tokens: None,
@@ -527,22 +593,25 @@ impl MessageStream {
 
         // Process Text handlers for text deltas
         if let Some(text_handlers) = handlers.get(&EventType::Text) {
-            if let MessageStreamEvent::ContentBlockDelta { delta, .. } = event {
-                if let crate::types::ContentBlockDelta::TextDelta { text } = delta {
-                    // Get current accumulated text
-                    let accumulated_text = message_snapshot.content
-                        .iter()
-                        .filter_map(|block| match block {
-                            crate::types::ContentBlock::Text { text } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("");
+            if let MessageStreamEvent::ContentBlockDelta {
+                delta: ContentBlockDelta::TextDelta { text },
+                ..
+            } = event
+            {
+                // Get current accumulated text
+                let accumulated_text = message_snapshot
+                    .content
+                    .iter()
+                    .filter_map(|block| match block {
+                        ContentBlock::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("");
 
-                    for handler in text_handlers {
-                        if let EventHandler::Text(callback) = handler {
-                            callback(text, &accumulated_text);
-                        }
+                for handler in text_handlers {
+                    if let EventHandler::Text(callback) = handler {
+                        callback(text, &accumulated_text);
                     }
                 }
             }
@@ -618,7 +687,8 @@ impl MessageStream {
         }
 
         // Wait for final result
-        self.completion_receiver.await
+        self.completion_receiver
+            .await
             .map_err(|_| AnthropicError::StreamError("Stream ended unexpectedly".to_string()))?
     }
 
@@ -638,7 +708,8 @@ impl MessageStream {
     /// # }
     /// ```
     pub async fn done(self) -> Result<()> {
-        self.completion_receiver.await
+        self.completion_receiver
+            .await
             .map_err(|_| AnthropicError::StreamError("Stream ended unexpectedly".to_string()))?
             .map(|_| ())
     }
@@ -694,11 +765,16 @@ impl MessageStream {
             MessageStreamEvent::MessageStart { message } => {
                 *self.current_message.lock().unwrap() = Some(message.clone());
             }
-            MessageStreamEvent::ContentBlockStart { content_block, index } => {
+            MessageStreamEvent::ContentBlockStart {
+                content_block,
+                index,
+            } => {
                 if let Some(ref mut msg) = *self.current_message.lock().unwrap() {
                     // Ensure the content array is large enough
                     while msg.content.len() <= *index {
-                        msg.content.push(ContentBlock::Text { text: String::new() });
+                        msg.content.push(ContentBlock::Text {
+                            text: String::new(),
+                        });
                     }
                     msg.content[*index] = content_block.clone();
                 }
@@ -742,12 +818,19 @@ impl MessageStream {
 
     /// Apply a content block delta to update the content.
     #[allow(dead_code)]
-    fn apply_delta(&self, content_block: &mut ContentBlock, delta: &ContentBlockDelta) -> Result<()> {
+    fn apply_delta(
+        &self,
+        content_block: &mut ContentBlock,
+        delta: &ContentBlockDelta,
+    ) -> Result<()> {
         match (content_block, delta) {
             (ContentBlock::Text { text }, ContentBlockDelta::TextDelta { text: delta_text }) => {
                 text.push_str(delta_text);
             }
-            (ContentBlock::ToolUse { input, .. }, ContentBlockDelta::InputJsonDelta { partial_json }) => {
+            (
+                ContentBlock::ToolUse { input, .. },
+                ContentBlockDelta::InputJsonDelta { partial_json },
+            ) => {
                 // In a real implementation, we'd parse the partial JSON
                 // For now, we'll just store it as-is
                 *input = serde_json::from_str(partial_json)
@@ -778,19 +861,20 @@ impl MessageStream {
 
         // Dispatch specific event types
         match event {
-            MessageStreamEvent::ContentBlockDelta { delta, .. } => {
-                if let ContentBlockDelta::TextDelta { text } = delta {
-                    if let Some(text_handlers) = handlers.get(&EventType::Text) {
-                        for handler in text_handlers {
-                            if let EventHandler::Text(callback) = handler {
-                                // Get current accumulated text for snapshot
-                                let snapshot = if let Some(ref msg) = *current_message {
-                                    self.get_accumulated_text(msg)
-                                } else {
-                                    String::new()
-                                };
-                                callback(text, &snapshot);
-                            }
+            MessageStreamEvent::ContentBlockDelta {
+                delta: ContentBlockDelta::TextDelta { text },
+                ..
+            } => {
+                if let Some(text_handlers) = handlers.get(&EventType::Text) {
+                    for handler in text_handlers {
+                        if let EventHandler::Text(callback) = handler {
+                            // Get current accumulated text for snapshot
+                            let snapshot = if let Some(ref msg) = *current_message {
+                                self.get_accumulated_text(msg)
+                            } else {
+                                String::new()
+                            };
+                            callback(text, &snapshot);
                         }
                     }
                 }
@@ -823,7 +907,8 @@ impl MessageStream {
 
     /// Get the accumulated text from all text content blocks.
     fn get_accumulated_text(&self, message: &Message) -> String {
-        message.content
+        message
+            .content
             .iter()
             .filter_map(|block| match block {
                 ContentBlock::Text { text } => Some(text.as_str()),
@@ -858,9 +943,9 @@ impl Stream for MessageStream {
             std::task::Poll::Ready(Some(Err(err))) => {
                 // Handle any broadcast stream errors
                 *this.errored.lock().unwrap() = true;
-                std::task::Poll::Ready(Some(Err(AnthropicError::StreamError(
-                    format!("Stream error: {err}")
-                ))))
+                std::task::Poll::Ready(Some(Err(AnthropicError::StreamError(format!(
+                    "Stream error: {err}"
+                )))))
             }
             std::task::Poll::Ready(None) => {
                 *this.ended.lock().unwrap() = true;
@@ -873,7 +958,7 @@ impl Stream for MessageStream {
                 } else {
                     std::task::Poll::Pending
                 }
-            },
+            }
         }
     }
 }
@@ -888,7 +973,8 @@ mod tests {
         // Create a simple HTTP client and make a basic request for testing
         let client = reqwest::Client::new();
         // Use httpbin.org which provides testing endpoints
-        client.get("https://httpbin.org/status/200")
+        client
+            .get("https://httpbin.org/status/200")
             .send()
             .await
             .expect("Failed to create test response")
@@ -942,8 +1028,8 @@ mod tests {
 
     #[test]
     fn test_event_handlers() {
-        use std::sync::{Arc, Mutex};
         use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
 
         // Test creating event handlers directly
         let text_called = Arc::new(Mutex::new(false));

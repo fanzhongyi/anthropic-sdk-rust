@@ -358,7 +358,10 @@ mod tests {
         assert_eq!(request.method, "POST");
         assert_eq!(request.url, "/v1/messages");
         assert!(request.body.messages.len() > 0);
-        assert_eq!(request.body.system, Some("You are helpful".to_string()));
+        assert!(matches!(
+            request.body.system,
+            Some(crate::types::messages::SystemParam::Text(ref s)) if s == "You are helpful"
+        ));
         assert_eq!(request.body.temperature, Some(0.7));
     }
 } 

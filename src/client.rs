@@ -92,7 +92,7 @@ impl Anthropic {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn messages(&self) -> MessagesResource {
+    pub fn messages(&self) -> MessagesResource<'_> {
         MessagesResource::new(self)
     }
 
@@ -186,7 +186,7 @@ impl Anthropic {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn models(&self) -> ModelsResource {
+    pub fn models(&self) -> ModelsResource<'_> {
         ModelsResource::new(self)
     }
 }

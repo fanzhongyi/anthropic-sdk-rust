@@ -671,7 +671,7 @@ mod tests {
     fn test_content_block_creation() {
         let text_block = ContentBlockParam::text("Hello world");
         match text_block {
-            ContentBlockParam::Text { text } => assert_eq!(text, "Hello world"),
+            ContentBlockParam::Text { text, .. } => assert_eq!(text, "Hello world"),
             _ => panic!("Expected text block"),
         }
 

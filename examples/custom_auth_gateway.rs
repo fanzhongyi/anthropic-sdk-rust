@@ -151,11 +151,9 @@ async fn test_with_anthropic_sdk() -> Result<(), Box<dyn std::error::Error>> {
     
     let client = Anthropic::with_config(config)?;
     
-    let request = MessageCreateBuilder::new()
-        .model("claude-3-5-sonnet-latest")
-        .max_tokens(20)
+    let request = MessageCreateBuilder::new("claude-3-5-sonnet-latest", 20)
         .user("Test message")
-        .build()?;
+        .build();
     
     let response = client.messages().create(request).await?;
     

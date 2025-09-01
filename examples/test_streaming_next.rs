@@ -97,8 +97,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Ok(MessageStreamEvent::MessageStop) => {
                         println!("\n[MessageStop received - stream will auto-terminate]");
                     }
-                    Ok(MessageStreamEvent::Text { text, snapshot }) => {
-                        println!("Text: {text}, snapshot: {snapshot}");
+                    Ok(MessageStreamEvent::Text { text }) => {
+                        println!("Text: {text}");
                     }
                     Ok(event) => {
                         println!("Unhandled event: {event:?}");
