@@ -1,0 +1,3 @@
+# rust-analyzer configuration
+[cargo]
+features = ["ant"]
