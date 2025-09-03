@@ -167,7 +167,7 @@ class NotificationService {
 "#;
 
     // Use extended cache TTL and thinking for thorough analysis
-    let message = client.messages().create_with_extended_cache(
+    let message = client.messages().create(
         MessageCreateBuilder::new("claude-sonnet-4@20250514", 9000)
             .thinking_config(ThinkingConfig::enabled(2000))
             .system(vec![
@@ -260,7 +260,7 @@ Current Pain Points:
 - Scaling issues during market volatility
 "#;
 
-    let stream = client.messages().create_stream_with_extended_cache(
+    let stream = client.messages().create_stream(
         MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
             .thinking_config(ThinkingConfig::enabled(2048))
             .system(vec![
@@ -387,7 +387,7 @@ You provide practical, experienced-based advice with specific examples and best 
 
     let response1 = client
         .messages()
-        .create_with_extended_cache(
+        .create(
             MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
                 .thinking(2048)
                 .system(vec![SystemContentBlock::text_with_cache(
@@ -413,7 +413,7 @@ You provide practical, experienced-based advice with specific examples and best 
 
     let response2 = client
         .messages()
-        .create_with_extended_cache(
+        .create(
             MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
                 .thinking(2048)
                 .system(vec![SystemContentBlock::text_with_cache(
@@ -440,7 +440,7 @@ You provide practical, experienced-based advice with specific examples and best 
     // Turn 3: Technical deep-dive
     println!("\n👤 User: Can you show me a specific example of implementing the Saga pattern?");
 
-    let response3 = client.messages().create_with_extended_cache(
+    let response3 = client.messages().create(
         MessageCreateBuilder::new("claude-sonnet-4@20250514", 3072)
             .thinking(2048)
             .system(vec![

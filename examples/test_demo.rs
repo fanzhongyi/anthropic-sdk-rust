@@ -15,6 +15,9 @@ use anthropic_sdk::{
 };
 use std::error::Error;
 
+// pub const MODEL: &str = "claude-3-7-sonnet@20250219";
+pub const MODEL: &str = "claude-sonnet-4@20250514";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
@@ -64,7 +67,7 @@ async fn test_basic_thinking(client: &Anthropic) -> Result<(), Box<dyn Error>> {
     println!("🤔 Testing extended thinking with a math problem...");
 
     let message = client.messages().create(
-        MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 4096)
+        MessageCreateBuilder::new(MODEL, 4096)
             .thinking(2048) // Allow 2048 tokens for thinking
             .system("You are a math tutor. Show your reasoning clearly.")
             .user("If I have 15 apples and give away 1/3 of them, then buy 8 more apples, how many apples do I have? Think through this step by step.")
@@ -157,10 +160,10 @@ Provide detailed, actionable recommendations with specific examples.
     let message1 = client
         .messages()
         .create(
-            MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 512)
+            MessageCreateBuilder::new(MODEL, 512)
                 .system(vec![SystemContentBlock::text_with_cache(
                     large_system_prompt,
-                    CacheControl::ephemeral_5m(),
+                    CacheControl::ephemeral(),
                 )])
                 .user("What's the most important principle in system design?")
                 .build(),
@@ -183,10 +186,10 @@ Provide detailed, actionable recommendations with specific examples.
     let message2 = client
         .messages()
         .create(
-            MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 512)
+            MessageCreateBuilder::new(MODEL, 512)
                 .system(vec![SystemContentBlock::text_with_cache(
                     large_system_prompt,
-                    CacheControl::ephemeral_5m(),
+                    CacheControl::ephemeral(),
                 )])
                 .user("How do you ensure high availability in distributed systems?")
                 .build(),
@@ -249,20 +252,20 @@ Challenges:
 - Performance under high load
 "#;
 
-    let message = client.messages().create_with_extended_cache(
-        MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 2048)
-            .thinking_config(ThinkingConfig::enabled(1000))
+    let message = client.messages().create(
+        MessageCreateBuilder::new(MODEL, 2048)
+            .thinking_config(ThinkingConfig::enabled(1024))
             .system(vec![
                 SystemContentBlock::text_with_cache(
                     "You are a senior system architect specializing in real-time applications.",
-                    CacheControl::ephemeral_1h()
+                    CacheControl::ephemeral()
                 )
             ])
             .user(vec![
                 ContentBlockParam::text("Given this project context:"),
                 ContentBlockParam::text_with_cache(
                     context,
-                    CacheControl::ephemeral_1h()
+                    CacheControl::ephemeral()
                 ),
                 ContentBlockParam::text("What are the top 3 architectural improvements you'd recommend? Think through the trade-offs carefully.")
             ])

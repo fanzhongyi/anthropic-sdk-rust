@@ -177,7 +177,7 @@ Our e-commerce platform serves millions of users globally with the following key
 "#;
 
     // Use extended cache TTL for long-running analysis sessions
-    let message = client.messages().create_with_extended_cache(
+    let message = client.messages().create(
         MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 1024)
             .system(vec![
                 SystemContentBlock::text_with_cache(

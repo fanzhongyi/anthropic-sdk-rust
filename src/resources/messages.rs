@@ -39,48 +39,6 @@ impl<'a> MessagesResource<'a> {
     /// # }
     /// ```
     pub async fn create(&self, params: MessageCreateParams) -> Result<Message> {
-        self.create_with_options(params, false).await
-    }
-
-    /// Create a message with Claude using extended cache TTL (1-hour cache)
-    ///
-    /// This method enables the 1-hour cache TTL beta feature for prompt caching.
-    /// Use this when you have large prompts that benefit from extended caching.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// use anthropic_sdk::{Anthropic, types::{MessageCreateBuilder, SystemContentBlock, CacheControl}};
-    ///
-    /// let client = Anthropic::from_env()?;
-    ///
-    /// let message = client.messages().create_with_extended_cache(
-    ///     MessageCreateBuilder::new("claude-3-5-sonnet-latest", 1024)
-    ///         .system(vec![
-    ///             SystemContentBlock::text_with_cache(
-    ///                 "You are a helpful AI assistant with extensive knowledge...",
-    ///                 CacheControl::ephemeral_1h()
-    ///             )
-    ///         ])
-    ///         .user("What can you help me with?")
-    ///         .build()
-    /// ).await?;
-    ///
-    /// println!("Claude responded: {:?}", message.content);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn create_with_extended_cache(&self, params: MessageCreateParams) -> Result<Message> {
-        self.create_with_options(params, true).await
-    }
-
-    /// Internal method to create messages with optional extended cache
-    async fn create_with_options(
-        &self,
-        params: MessageCreateParams,
-        extended_cache: bool,
-    ) -> Result<Message> {
         let url = self.client.http_client().build_url("/v1/messages");
 
         let mut request_builder = self
@@ -89,12 +47,6 @@ impl<'a> MessagesResource<'a> {
             .post(&url)
             .header("anthropic-version", "2023-06-01")
             .json(&params);
-
-        // Add beta headers if needed
-        if extended_cache {
-            request_builder =
-                request_builder.header("anthropic-beta", "extended-cache-ttl-2025-04-11");
-        }
 
         // Check if thinking is enabled and add beta header
         if params.thinking.is_some() {
@@ -157,53 +109,7 @@ impl<'a> MessagesResource<'a> {
     ///     // Process each event as needed
     /// }
     /// ```
-    pub async fn create_stream(&self, params: MessageCreateParams) -> Result<MessageStream> {
-        self.create_stream_with_options(params, false).await
-    }
-
-    /// Create a streaming message with Claude using extended cache TTL (1-hour cache)
-    ///
-    /// This method enables the 1-hour cache TTL beta feature for prompt caching in streaming mode.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use anthropic_sdk::{Anthropic, types::{MessageCreateBuilder, SystemContentBlock, CacheControl}};
-    /// use futures::StreamExt;
-    ///
-    /// let client = Anthropic::from_env()?;
-    ///
-    /// let stream = client.messages().create_stream_with_extended_cache(
-    ///     MessageCreateBuilder::new("claude-3-5-sonnet-latest", 1024)
-    ///         .system(vec![
-    ///             SystemContentBlock::text_with_cache(
-    ///                 "Large context that should be cached...",
-    ///                 CacheControl::ephemeral_1h()
-    ///             )
-    ///         ])
-    ///         .user("Continue the conversation")
-    ///         .thinking(10000) // Enable extended thinking
-    ///         .stream(true)
-    ///         .build()
-    /// ).await?;
-    ///
-    /// while let Some(event) = stream.next().await {
-    ///     // Process thinking and text deltas
-    /// }
-    /// ```
-    pub async fn create_stream_with_extended_cache(
-        &self,
-        params: MessageCreateParams,
-    ) -> Result<MessageStream> {
-        self.create_stream_with_options(params, true).await
-    }
-
-    /// Internal method to create streaming messages with optional extended cache
-    async fn create_stream_with_options(
-        &self,
-        mut params: MessageCreateParams,
-        extended_cache: bool,
-    ) -> Result<MessageStream> {
+    pub async fn create_stream(&self, mut params: MessageCreateParams) -> Result<MessageStream> {
         // Ensure streaming is enabled
         params.stream = Some(true);
 
@@ -219,12 +125,6 @@ impl<'a> MessagesResource<'a> {
         .header("Content-Type", "application/json")
         .header("anthropic-version", "2023-06-01")
         .config(StreamConfig::default());
-
-        // Add beta headers if needed
-        if extended_cache {
-            stream_builder =
-                stream_builder.header("anthropic-beta", "extended-cache-ttl-2025-04-11");
-        }
 
         // Check if thinking is enabled and add beta header
         if params.thinking.is_some() {
