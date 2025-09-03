@@ -466,6 +466,46 @@ impl MessageStream {
         )
     }
 
+    /// Register a callback that fires when a ToolUse has been fully parsed and is ready.
+    pub fn on_tool_ready<F>(self, callback: F) -> Self
+    where
+        F: Fn(&crate::types::ToolUse) + Send + Sync + 'static,
+    {
+        self.on(
+            EventType::ToolReady,
+            EventHandler::ToolReady(Box::new(callback)),
+        )
+    }
+
+    /// Register a helper that executes tools as soon as they are ready.
+    ///
+    /// This will spawn a background task per tool call. Results are delivered
+    /// to the provided callback. Errors/timeouts are converted into ToolResult with is_error=true.
+    pub fn on_tool_ready_execute(
+        self,
+        registry: crate::tools::SharedToolRegistry,
+        on_result: std::sync::Arc<dyn Fn(crate::types::ToolResult) + Send + Sync>,
+    ) -> Self {
+        self.on_tool_ready(move |tool_use| {
+            let registry = registry.clone();
+            let tool_use = tool_use.clone();
+            let on_result = on_result.clone();
+            tokio::spawn(async move {
+                match registry.execute(&tool_use).await {
+                    Ok(result) => on_result(result),
+                    Err(err) => on_result(crate::types::ToolResult {
+                        tool_use_id: tool_use.id.clone(),
+                        content: crate::types::ToolResultContent::Text(format!(
+                            "Execution error: {}",
+                            err
+                        )),
+                        is_error: Some(true),
+                    }),
+                }
+            });
+        })
+    }
+
     /// Register a callback for when a complete message is received.
     ///
     /// # Examples
@@ -612,6 +652,30 @@ impl MessageStream {
                 for handler in text_handlers {
                     if let EventHandler::Text(callback) = handler {
                         callback(text, &accumulated_text);
+                    }
+                }
+            }
+        }
+
+        // Process ToolReady handlers when a tool block is finalized
+        if let Some(tool_ready_handlers) = handlers.get(&EventType::ToolReady) {
+            if let MessageStreamEvent::ContentBlockStop {
+                index,
+                content_block,
+            } = event
+            {
+                // Prefer the final content block provided by the event; fall back to snapshot
+                let maybe_block = content_block
+                    .as_ref()
+                    .or_else(|| message_snapshot.content.get(*index));
+
+                if let Some(block) = maybe_block {
+                    if let Ok(tool_use) = crate::types::ToolUse::try_from(block) {
+                        for handler in tool_ready_handlers {
+                            if let EventHandler::ToolReady(callback) = handler {
+                                callback(&tool_use);
+                            }
+                        }
                     }
                 }
             }

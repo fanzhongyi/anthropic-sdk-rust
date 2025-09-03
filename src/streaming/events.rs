@@ -18,6 +18,9 @@ pub type ErrorCb = dyn Fn(&AnthropicError) + Send + Sync;
 #[allow(clippy::type_complexity)]
 pub type VoidCb = dyn Fn() + Send + Sync;
 
+#[allow(clippy::type_complexity)]
+pub type ToolReadyCb = dyn Fn(&crate::types::ToolUse) + Send + Sync;
+
 /// Types of events that can be handled by MessageStream.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EventType {
@@ -37,6 +40,8 @@ pub enum EventType {
     Connect,
     /// Stream aborted
     Abort,
+    /// A tool call has been fully parsed and is ready (id, name, input ready)
+    ToolReady,
 }
 
 /// Event handlers for different types of events.
@@ -67,6 +72,9 @@ pub enum EventHandler {
 
     /// Handler for stream abort
     Abort(Box<ErrorCb>),
+
+    /// Handler for tool ready (fully parsed ToolUse)
+    ToolReady(Box<ToolReadyCb>),
 }
 
 impl std::fmt::Debug for EventHandler {
@@ -80,6 +88,7 @@ impl std::fmt::Debug for EventHandler {
             Self::End(_) => f.debug_tuple("End").field(&"<callback>").finish(),
             Self::Connect(_) => f.debug_tuple("Connect").field(&"<callback>").finish(),
             Self::Abort(_) => f.debug_tuple("Abort").field(&"<callback>").finish(),
+            Self::ToolReady(_) => f.debug_tuple("ToolReady").field(&"<callback>").finish(),
         }
     }
 }

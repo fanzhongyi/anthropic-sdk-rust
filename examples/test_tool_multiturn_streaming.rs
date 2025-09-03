@@ -446,7 +446,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = Anthropic::from_env()?;
     println!("✅ Client initialized successfully\n");
 
-    let registry = demo_registry();
+    let registry = Arc::new(demo_registry());
     let tool_decls = registry.get_tool_definitions();
     println!("🔧 Tool registry contains {} tools", tool_decls.len());
     for tool in tool_decls.clone().into_iter() {
@@ -574,11 +574,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Track tool uses as they come in
     let tool_uses = Arc::new(Mutex::new(Vec::<ToolUseBlock>::new()));
     let tool_uses_clone = tool_uses.clone();
+    let immediate_results = Arc::new(Mutex::new(Vec::<ToolResult>::new()));
 
     // Use the proper streaming API with callbacks
+    let results_for_cb = immediate_results.clone();
+    let registry_for_cb = registry.clone();
     let tool_stream = client.messages().create_stream(stream_params).await?;
 
     let stream_response = tool_stream
+        .on_tool_ready_execute(
+            registry_for_cb,
+            Arc::new(move |result: ToolResult| {
+                // Store result as soon as the tool execution completes
+                println!("🔧 Tool Ready Callback result: {result:?}");
+                results_for_cb.lock().unwrap().push(result);
+            }),
+        )
         .on_text(|delta, _| {
             print!("{delta}");
         })
@@ -588,16 +599,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     println!("📝 Message started");
                 }
                 MessageStreamEvent::ContentBlockStart {
-                    content_block: ContentBlock::ToolUse { id, name, input },
+                    content_block,
                     index,
                 } => {
-                    println!("🔧 Tool use started: {name} ({id}) ({input}) at index {index}");
-                    let tool_use = ToolUseBlock {
-                        id: id.clone(),
-                        name: name.clone(),
-                        input: input.clone(),
-                    };
-                    tool_uses_clone.lock().unwrap().push(tool_use);
+                    if let Ok(tool_use) = ToolUseBlock::try_from(content_block) {
+                        println!("🔧 Tool use started: {tool_use:?} at index {index}");
+                    }
                 }
                 MessageStreamEvent::ContentBlockDelta {
                     delta: ContentBlockDelta::InputJsonDelta { partial_json },
@@ -634,21 +641,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         // Fall back to getting from current message
                         current_message.content.get(*index)
                     };
-
-                    if let Some(ContentBlock::ToolUse { id, name, input }) = final_content_block {
-                        println!("🔧 Final tool use: {name} ({id}) with input: {input}");
-                        // Update the tool use with the final complete input
-                        let mut tools = tool_uses_clone.lock().unwrap();
-                        if let Some(existing) = tools.iter_mut().find(|t| t.id == *id) {
-                            existing.input = input.clone();
-                        } else {
-                            // If somehow we missed the ContentBlockStart, add it now
-                            let final_tool_use = ToolUseBlock {
-                                id: id.clone(),
-                                name: name.clone(),
-                                input: input.clone(),
-                            };
-                            tools.push(final_tool_use);
+                    if let Some(block) = final_content_block {
+                        if let Ok(tool_use) = ToolUseBlock::try_from(block) {
+                            println!("🔧 Final tool use: {tool_use:?}");
+                            // Update the tool use with the final complete input
+                            let mut tools = tool_uses_clone.lock().unwrap();
+                            if let Some(existing) = tools.iter_mut().find(|t| t.id == tool_use.id) {
+                                existing.input = tool_use.input.clone();
+                            } else {
+                                // If somehow we missed the ContentBlockStart, add it now
+                                tools.push(tool_use);
+                            }
                         }
                     }
                 }
@@ -681,26 +684,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
         completed_tools.len()
     );
 
-    // Execute the tools
-    let mut tool_results = Vec::new();
-    for tool_use in &completed_tools {
-        println!(
-            "🔧 Executing tool '{}' with input: {}",
-            tool_use.name, tool_use.input
-        );
+    // Gather tool results (prefer immediate execution results)
+    let mut tool_results: Vec<ToolResult> = {
+        let locked = immediate_results.lock().unwrap();
+        if !locked.is_empty() {
+            locked.clone()
+        } else {
+            Vec::new()
+        }
+    };
 
-        match registry.execute(tool_use).await {
-            Ok(result) => {
-                println!("✅ Tool '{}' executed successfully", tool_use.name);
-                tool_results.push(result);
-            }
-            Err(err) => {
-                println!("❌ Tool '{}' failed: {}", tool_use.name, err);
-                tool_results.push(ToolResult {
-                    tool_use_id: tool_use.id.clone(),
-                    content: ToolResultContent::Text(format!("Execution error: {err}")),
-                    is_error: Some(true),
-                });
+    // Fallback: execute any tools not captured by immediate execution
+    if tool_results.is_empty() {
+        for tool_use in &completed_tools {
+            println!(
+                "🔧 Executing tool '{}' with input: {}",
+                tool_use.name, tool_use.input
+            );
+
+            match registry.execute(tool_use).await {
+                Ok(result) => {
+                    println!("✅ Tool '{}' executed successfully", tool_use.name);
+                    tool_results.push(result);
+                }
+                Err(err) => {
+                    println!("❌ Tool '{}' failed: {}", tool_use.name, err);
+                    tool_results.push(ToolResult {
+                        tool_use_id: tool_use.id.clone(),
+                        content: ToolResultContent::Text(format!("Execution error: {err}")),
+                        is_error: Some(true),
+                    });
+                }
             }
         }
     }
@@ -709,22 +723,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let assistant_content_blocks: Vec<ContentBlockParam> = stream_response
         .content
         .iter()
-        .map(|b| match b {
-            ContentBlock::Text { text } => ContentBlockParam::Text {
-                text: text.clone(),
-                cache_control: None,
-            },
-            ContentBlock::ToolUse { id, name, input } => ContentBlockParam::ToolUse {
-                id: id.clone(),
-                name: name.clone(),
-                input: input.clone(),
-                cache_control: None,
-            },
-            _ => ContentBlockParam::Text {
-                text: "".to_string(),
-                cache_control: None,
-            },
-        })
+        .filter_map(|b| ContentBlockParam::try_from(b).ok())
         .collect();
 
     // Convert tool results to content blocks for the user message
@@ -798,6 +797,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let final_follow_up = follow_up_stream
         .on_text(|delta, _| {
             print!("{delta}");
+        })
+        .on_final_message(|_| {
+            // println!("🌊 Final conversation: \n{}", message.content.get_text());
         })
         .on_stream_event(|event, _| match event {
             MessageStreamEvent::MessageStart { .. } => {

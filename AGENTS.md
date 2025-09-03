@@ -114,6 +114,15 @@
 
 ---
 
+## 新增：流式工具就绪回调
+
+- 新增事件与回调：在 streaming 模块中增加 EventType::ToolReady 与 EventHandler::ToolReady，并提供链式注册 API：
+  - MessageStream.on_tool_ready(|tool_use| { /* 工具就绪时触发 */ })
+  - MessageStream.on_tool_ready_execute(registry: SharedToolRegistry, on_result: Arc<Fn(ToolResult)>)：解析到完整的 ToolUse（id/name/input）后即刻 tokio::spawn 异步执行工具，将结果通过回调返回。
+- 触发时机：当收到 ContentBlockStop 且最终块为 ToolUse 时，立即构造 ToolUse 并回调；无需等待整条消息结束。
+- 兼容性：不影响既有 on_stream_event/on_text/on_final_message 等回调；仍可在流结束后统一执行工具作为回退逻辑。
+- 示例：examples/test_tool_multiturn_streaming.rs 已接入 on_tool_ready_execute，实时收集 ToolResult 并在第二轮消息中回传给模型。
+
 ## 六、安全与合规
 
 - 仅通过 HTTPS；API Key 不记录到日志

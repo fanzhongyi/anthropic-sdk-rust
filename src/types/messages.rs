@@ -649,6 +649,34 @@ impl ContentBlockParam {
     }
 }
 
+// Ergonomic conversion from response content blocks to request params for common variants.
+impl TryFrom<&crate::types::ContentBlock> for ContentBlockParam {
+    type Error = ();
+
+    fn try_from(block: &crate::types::ContentBlock) -> Result<Self, Self::Error> {
+        match block {
+            crate::types::ContentBlock::Text { text } => Ok(ContentBlockParam::Text {
+                text: text.clone(),
+                cache_control: None,
+            }),
+            crate::types::ContentBlock::ToolUse { id, name, input } => {
+                Ok(ContentBlockParam::ToolUse {
+                    id: id.clone(),
+                    name: name.clone(),
+                    input: input.clone(),
+                    cache_control: None,
+                })
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+/// Helper to convert a response ContentBlock into a request ContentBlockParam when supported.
+pub fn content_block_to_param(block: &crate::types::ContentBlock) -> Option<ContentBlockParam> {
+    ContentBlockParam::try_from(block).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

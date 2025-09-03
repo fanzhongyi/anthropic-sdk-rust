@@ -111,6 +111,28 @@ pub struct ToolUse {
     pub input: Value,
 }
 
+// Ergonomic extraction: build a ToolUse from a content block
+impl TryFrom<&crate::types::ContentBlock> for ToolUse {
+    type Error = ();
+
+    fn try_from(block: &crate::types::ContentBlock) -> Result<Self, Self::Error> {
+        if let crate::types::ContentBlock::ToolUse { id, name, input } = block {
+            Ok(Self {
+                id: id.clone(),
+                name: name.clone(),
+                input: input.clone(),
+            })
+        } else {
+            Err(())
+        }
+    }
+}
+
+/// Helper to extract ToolUse from a content block, returning None if not a tool use
+pub fn tool_use_from_block(block: &crate::types::ContentBlock) -> Option<ToolUse> {
+    ToolUse::try_from(block).ok()
+}
+
 /// Result of a tool execution.
 ///
 /// After executing a tool, return the result using this structure
