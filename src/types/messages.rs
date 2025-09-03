@@ -677,6 +677,54 @@ pub fn content_block_to_param(block: &crate::types::ContentBlock) -> Option<Cont
     ContentBlockParam::try_from(block).ok()
 }
 
+/// Convert a ToolResult into a ToolResult content block parameter.
+impl From<crate::types::ToolResult> for ContentBlockParam {
+    fn from(tr: crate::types::ToolResult) -> Self {
+        use crate::types::{ToolImageSource, ToolResultBlock, ToolResultContent};
+
+        let content_param: Option<ToolResultContentParam> = match tr.content {
+            ToolResultContent::Text(t) => Some(ToolResultContentParam::Text(t)),
+            ToolResultContent::Json(v) => {
+                // Render JSON as pretty text within a single nested block for readability
+                let pretty = serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string());
+                Some(ToolResultContentParam::Blocks(vec![
+                    ToolResultNestedBlockParam::Text {
+                        text: pretty,
+                        cache_control: None,
+                    },
+                ]))
+            }
+            ToolResultContent::Blocks(blocks) => {
+                let nested: Vec<ToolResultNestedBlockParam> = blocks
+                    .into_iter()
+                    .map(|b| match b {
+                        ToolResultBlock::Text { text } => ToolResultNestedBlockParam::Text {
+                            text,
+                            cache_control: None,
+                        },
+                        ToolResultBlock::Image { source } => match source {
+                            ToolImageSource::Base64 { media_type, data } => {
+                                ToolResultNestedBlockParam::Image {
+                                    source: ImageSource::Base64 { media_type, data },
+                                    cache_control: None,
+                                }
+                            }
+                        },
+                    })
+                    .collect();
+                Some(ToolResultContentParam::Blocks(nested))
+            }
+        };
+
+        ContentBlockParam::ToolResult {
+            tool_use_id: tr.tool_use_id,
+            content: content_param,
+            is_error: tr.is_error,
+            cache_control: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

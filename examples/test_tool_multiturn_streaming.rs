@@ -21,20 +21,8 @@ use std::path::PathBuf;
 use anthropic_sdk::Tool;
 use anthropic_sdk::{
     types::{
-        ContentBlock,
-        ContentBlockDelta,
-        ContentBlockParam,
-        ContentBlocksExt,
-        ImageSource,
-        MessageContent,
-        MessageCreateBuilder,
-        MessageStreamEvent,
-        ToolImageSource,
-        ToolResultBlock,
-        // Added for richer tool_result content mapping
-        ToolResultContentParam,
-        ToolResultNestedBlockParam,
-        ToolUse as ToolUseBlock,
+        ContentBlock, ContentBlockDelta, ContentBlockParam, ContentBlocksExt, MessageContent,
+        MessageCreateBuilder, MessageStreamEvent, ToolUse,
     },
     Anthropic, Role, ToolFunction, ToolRegistry, ToolResult, ToolResultContent,
 };
@@ -572,7 +560,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Track tool uses as they come in
-    let tool_uses = Arc::new(Mutex::new(Vec::<ToolUseBlock>::new()));
+    let tool_uses = Arc::new(Mutex::new(Vec::<ToolUse>::new()));
     let tool_uses_clone = tool_uses.clone();
     let immediate_results = Arc::new(Mutex::new(Vec::<ToolResult>::new()));
 
@@ -602,7 +590,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     content_block,
                     index,
                 } => {
-                    if let Ok(tool_use) = ToolUseBlock::try_from(content_block) {
+                    if let Ok(tool_use) = ToolUse::try_from(content_block) {
                         println!("🔧 Tool use started: {tool_use:?} at index {index}");
                     }
                 }
@@ -642,7 +630,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         current_message.content.get(*index)
                     };
                     if let Some(block) = final_content_block {
-                        if let Ok(tool_use) = ToolUseBlock::try_from(block) {
+                        if let Ok(tool_use) = ToolUse::try_from(block) {
                             println!("🔧 Final tool use: {tool_use:?}");
                             // Update the tool use with the final complete input
                             let mut tools = tool_uses_clone.lock().unwrap();
@@ -666,7 +654,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .final_message()
         .await?;
 
-    let completed_tools: Vec<ToolUseBlock> = tool_uses.lock().unwrap().clone();
+    let completed_tools: Vec<ToolUse> = tool_uses.lock().unwrap().clone();
 
     if completed_tools.is_empty() {
         println!("❌ No tool calls detected in streaming response!");
@@ -727,54 +715,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .collect();
 
     // Convert tool results to content blocks for the user message
-    let tool_result_blocks: Vec<ContentBlockParam> = tool_results
-        .into_iter()
-        .map(|tr| {
-            let content_param: Option<ToolResultContentParam> = match tr.content {
-                ToolResultContent::Text(t) => Some(ToolResultContentParam::Text(t)),
-                ToolResultContent::Json(v) => {
-                    // Render JSON as a single nested text block within Blocks for richer structure
-                    let pretty = serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string());
-                    Some(ToolResultContentParam::Blocks(vec![
-                        ToolResultNestedBlockParam::Text {
-                            text: pretty,
-                            cache_control: None,
-                        },
-                    ]))
-                }
-                ToolResultContent::Blocks(blocks) => {
-                    // Map tool result blocks to nested tool_result content blocks supported by messages API
-                    let nested: Vec<ToolResultNestedBlockParam> = blocks
-                        .into_iter()
-                        .map(|b| match b {
-                            ToolResultBlock::Text { text } => ToolResultNestedBlockParam::Text {
-                                text,
-                                cache_control: None,
-                            },
-                            ToolResultBlock::Image { source } => {
-                                // Convert ToolImageSource -> messages::ImageSource
-                                match source {
-                                    ToolImageSource::Base64 { media_type, data } => {
-                                        ToolResultNestedBlockParam::Image {
-                                            source: ImageSource::Base64 { media_type, data },
-                                            cache_control: None,
-                                        }
-                                    }
-                                }
-                            }
-                        })
-                        .collect();
-                    Some(ToolResultContentParam::Blocks(nested))
-                }
-            };
-            ContentBlockParam::ToolResult {
-                tool_use_id: tr.tool_use_id,
-                content: content_param,
-                is_error: tr.is_error,
-                cache_control: None,
-            }
-        })
-        .collect();
+    let tool_result_blocks: Vec<ContentBlockParam> =
+        tool_results.into_iter().map(Into::into).collect();
 
     // Build follow-up message with tool results
     let follow_up_builder = MessageCreateBuilder::new(MODEL, 256)
