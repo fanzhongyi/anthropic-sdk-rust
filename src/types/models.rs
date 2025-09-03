@@ -10,27 +10,27 @@ pub enum Model {
     Claude3_5Sonnet20241022,
     #[serde(rename = "claude-3-5-sonnet-20240620")]
     Claude3_5Sonnet20240620,
-    
+
     // Claude 3.5 Haiku models
     #[serde(rename = "claude-3-5-haiku-latest")]
     Claude3_5HaikuLatest,
     #[serde(rename = "claude-3-5-haiku-20241022")]
     Claude3_5Haiku20241022,
-    
+
     // Claude 3 Opus models
     #[serde(rename = "claude-3-opus-latest")]
     Claude3OpusLatest,
     #[serde(rename = "claude-3-opus-20240229")]
     Claude3Opus20240229,
-    
+
     // Claude 3 Sonnet models
     #[serde(rename = "claude-3-sonnet-20240229")]
     Claude3Sonnet20240229,
-    
+
     // Claude 3 Haiku models
     #[serde(rename = "claude-3-haiku-20240307")]
     Claude3Haiku20240307,
-    
+
     // Legacy Claude 2 models
     #[serde(rename = "claude-2.1")]
     Claude2_1,
@@ -55,32 +55,30 @@ impl Model {
             Self::Claude2_0 => "claude-2.0",
         }
     }
-    
+
     /// Get the family of the model (e.g., "sonnet", "haiku", "opus")
     pub fn family(&self) -> &'static str {
         match self {
-            Self::Claude3_5SonnetLatest | Self::Claude3_5Sonnet20241022 | Self::Claude3_5Sonnet20240620 |
-            Self::Claude3Sonnet20240229 => "sonnet",
-            Self::Claude3_5HaikuLatest | Self::Claude3_5Haiku20241022 | Self::Claude3Haiku20240307 => "haiku",
+            Self::Claude3_5SonnetLatest
+            | Self::Claude3_5Sonnet20241022
+            | Self::Claude3_5Sonnet20240620
+            | Self::Claude3Sonnet20240229 => "sonnet",
+            Self::Claude3_5HaikuLatest
+            | Self::Claude3_5Haiku20241022
+            | Self::Claude3Haiku20240307 => "haiku",
             Self::Claude3OpusLatest | Self::Claude3Opus20240229 => "opus",
             Self::Claude2_1 | Self::Claude2_0 => "claude-2",
         }
     }
-    
+
     /// Check if this model supports vision (image inputs)
     pub fn supports_vision(&self) -> bool {
-        match self {
-            Self::Claude2_1 | Self::Claude2_0 => false,
-            _ => true,
-        }
+        !matches!(self, Self::Claude2_1 | Self::Claude2_0)
     }
-    
+
     /// Check if this model supports tool use
     pub fn supports_tools(&self) -> bool {
-        match self {
-            Self::Claude2_1 | Self::Claude2_0 => false,
-            _ => true,
-        }
+        !matches!(self, Self::Claude2_1 | Self::Claude2_0)
     }
 }
 
@@ -94,4 +92,4 @@ impl From<Model> for String {
     fn from(model: Model) -> String {
         model.as_str().to_string()
     }
-} 
+}

@@ -7,27 +7,27 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::types::{ToolUse, ToolResult, Message, ContentBlock};
-use super::{ToolRegistry, ToolError, ToolOperationResult};
+use super::{ToolError, ToolOperationResult, ToolRegistry};
+use crate::types::{ContentBlock, Message, ToolResult, ToolUse};
 
 /// Configuration for tool execution.
 #[derive(Debug, Clone)]
 pub struct ToolExecutionConfig {
     /// Maximum number of retry attempts for failed tools.
     pub max_retries: u32,
-    
+
     /// Base delay between retry attempts.
     pub retry_delay: Duration,
-    
+
     /// Whether to use exponential backoff for retries.
     pub exponential_backoff: bool,
-    
+
     /// Maximum delay for exponential backoff.
     pub max_retry_delay: Duration,
-    
+
     /// Whether to execute tools in parallel when possible.
     pub parallel_execution: bool,
-    
+
     /// Maximum number of concurrent tool executions.
     pub max_concurrent_tools: usize,
 }
@@ -52,7 +52,7 @@ impl Default for ToolExecutionConfig {
 pub struct ToolExecutor {
     /// The tool registry for executing tools.
     registry: Arc<ToolRegistry>,
-    
+
     /// Configuration for tool execution.
     config: ToolExecutionConfig,
 }
@@ -91,7 +91,7 @@ impl ToolExecutor {
                             last_error = Some(ToolError::ExecutionFailed {
                                 source: format!("Tool returned error: {:?}", result.content).into(),
                             });
-                            
+
                             if attempt < self.config.max_retries {
                                 sleep(delay).await;
                                 if self.config.exponential_backoff {
@@ -129,7 +129,10 @@ impl ToolExecutor {
     ///
     /// # Returns
     /// Vector of tool results in the same order as input.
-    pub async fn execute_multiple(&self, tool_uses: &[ToolUse]) -> Vec<ToolOperationResult<ToolResult>> {
+    pub async fn execute_multiple(
+        &self,
+        tool_uses: &[ToolUse],
+    ) -> Vec<ToolOperationResult<ToolResult>> {
         if self.config.parallel_execution && tool_uses.len() > 1 {
             self.execute_parallel_with_concurrency(tool_uses).await
         } else {
@@ -142,18 +145,23 @@ impl ToolExecutor {
     }
 
     /// Execute tools in parallel with concurrency control.
-    async fn execute_parallel_with_concurrency(&self, tool_uses: &[ToolUse]) -> Vec<ToolOperationResult<ToolResult>> {
+    async fn execute_parallel_with_concurrency(
+        &self,
+        tool_uses: &[ToolUse],
+    ) -> Vec<ToolOperationResult<ToolResult>> {
         use futures::stream::{self, StreamExt};
 
         // Use a semaphore to limit concurrent executions
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent_tools));
-        
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(
+            self.config.max_concurrent_tools,
+        ));
+
         let futures = tool_uses.iter().enumerate().map(|(index, tool_use)| {
             let registry = self.registry.clone();
             let semaphore = semaphore.clone();
             let tool_use = tool_use.clone();
             let config = self.config.clone();
-            
+
             async move {
                 let _permit = semaphore.acquire().await.unwrap();
                 let executor = ToolExecutor::with_config(registry, config);
@@ -307,12 +315,18 @@ mod tests {
 
     #[async_trait]
     impl ToolFunction for TestRetryTool {
-        async fn execute(&self, _input: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        async fn execute(
+            &self,
+            _input: Value,
+        ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
             let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
             if attempt < self.fail_count {
                 Err("Simulated failure".into())
             } else {
-                Ok(ToolResult::success("test_id", format!("Success on attempt {}", attempt + 1)))
+                Ok(ToolResult::success(
+                    "test_id",
+                    format!("Success on attempt {}", attempt + 1),
+                ))
             }
         }
     }
@@ -323,7 +337,10 @@ mod tests {
 
     #[async_trait]
     impl ToolFunction for TestSlowTool {
-        async fn execute(&self, _input: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        async fn execute(
+            &self,
+            _input: Value,
+        ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
             sleep(self.delay).await;
             Ok(ToolResult::success("test_id", "Slow tool completed"))
         }
@@ -332,8 +349,7 @@ mod tests {
     #[tokio::test]
     async fn test_successful_execution() {
         let mut registry = ToolRegistry::new();
-        let tool_def = Tool::new("test_tool", "Test tool")
-            .build();
+        let tool_def = Tool::new("test_tool", "Test tool").build();
 
         let attempts = Arc::new(AtomicUsize::new(0));
         registry
@@ -365,8 +381,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_logic() {
         let mut registry = ToolRegistry::new();
-        let tool_def = Tool::new("retry_tool", "Tool that fails then succeeds")
-            .build();
+        let tool_def = Tool::new("retry_tool", "Tool that fails then succeeds").build();
 
         let attempts = Arc::new(AtomicUsize::new(0));
         registry
@@ -404,8 +419,7 @@ mod tests {
     #[tokio::test]
     async fn test_parallel_execution() {
         let mut registry = ToolRegistry::new();
-        let tool_def = Tool::new("slow_tool", "Slow tool for testing parallelism")
-            .build();
+        let tool_def = Tool::new("slow_tool", "Slow tool for testing parallelism").build();
 
         registry
             .register(
@@ -449,7 +463,7 @@ mod tests {
         // Should complete in roughly 100ms (parallel) rather than 300ms (sequential)
         assert!(duration < Duration::from_millis(200));
         assert_eq!(results.len(), 3);
-        
+
         for result in results {
             assert!(result.is_ok());
         }
@@ -473,4 +487,4 @@ mod tests {
         assert!(!config.parallel_execution);
         assert_eq!(config.max_concurrent_tools, 2);
     }
-} 
+}

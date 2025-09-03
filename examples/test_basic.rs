@@ -13,18 +13,20 @@
 //! cargo run --example test_basic
 //! ```
 
+use anthropic_sdk::types::streaming::{ContentBlockDelta, MessageStreamEvent};
 use anthropic_sdk::{
     types::{
-        CacheControl, ContentBlock, ContentBlockParam, ContentBlocksExt, MessageContent, MessageCreateBuilder, SystemContentBlock, ThinkingConfig,
-    }, Anthropic
+        CacheControl, ContentBlock, ContentBlockParam, ContentBlocksExt, MessageContent,
+        MessageCreateBuilder, SystemContentBlock, ThinkingConfig,
+    },
+    Anthropic,
 };
-use anthropic_sdk::types::streaming::{MessageStreamEvent, ContentBlockDelta};
 // use serde_json::json;  // removed unused import
-use futures::StreamExt;
 use anthropic_sdk::Tool;
-use std::error::Error;
 use base64::engine::general_purpose;
 use base64::Engine;
+use futures::StreamExt;
+use std::error::Error;
 use std::path::Path;
 
 #[tokio::main]
@@ -71,7 +73,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build();
 
     let msg = client.messages().create(params).await?;
-    println!("Story Tokens – in: {}, out: {}\n", msg.usage.input_tokens, msg.usage.output_tokens);
+    println!(
+        "Story Tokens – in: {}, out: {}\n",
+        msg.usage.input_tokens, msg.usage.output_tokens
+    );
 
     // ------------------------------------------------------------------
     // 3  Extended Thinking
@@ -113,7 +118,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .await?;
 
-    println!("Tokens – in: {}, out: {}", msg.usage.input_tokens, msg.usage.output_tokens);
+    println!(
+        "Tokens – in: {}, out: {}",
+        msg.usage.input_tokens, msg.usage.output_tokens
+    );
     if let Some(created) = msg.usage.cache_creation_input_tokens {
         println!("💾 Cache created ({created} tokens)");
     }
@@ -158,7 +166,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tokio::pin!(stream);
     while let Some(event) = stream.next().await {
         match event? {
-            MessageStreamEvent::ContentBlockDelta { delta: ContentBlockDelta::TextDelta { text }, .. } => {
+            MessageStreamEvent::ContentBlockDelta {
+                delta: ContentBlockDelta::TextDelta { text },
+                ..
+            } => {
                 print!("{text}");
             }
             MessageStreamEvent::MessageStop => {
@@ -227,16 +238,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let doc_path = Path::new("fixtures/sample.txt");
     if doc_path.exists() {
         let content = std::fs::read(doc_path)?;
-        use anthropic_sdk::types::{FileUploadParams, FilePurpose};
-        let upload_params = FileUploadParams::new(
-            content,
-            "sample.txt",
-            "text/plain",
-            FilePurpose::Upload,
-        );
+        use anthropic_sdk::types::{FilePurpose, FileUploadParams};
+        let upload_params =
+            FileUploadParams::new(content, "sample.txt", "text/plain", FilePurpose::Upload);
         match client.files().upload(upload_params).await {
             Ok(file_obj) => {
-                println!("Uploaded file '{}' (id: {})", file_obj.filename, file_obj.id);
+                println!(
+                    "Uploaded file '{}' (id: {})",
+                    file_obj.filename, file_obj.id
+                );
                 let files = client.files().list(None).await?;
                 println!("Total files: {}", files.data.len());
             }

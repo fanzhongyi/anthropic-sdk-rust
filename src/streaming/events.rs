@@ -3,7 +3,20 @@
 //! This module defines the event types and handlers used by the MessageStream
 //! to manage different types of callbacks and event dispatching.
 
-use crate::types::{Message, MessageStreamEvent, AnthropicError};
+use crate::types::{AnthropicError, Message, MessageStreamEvent};
+
+// Type aliases to simplify complex callback trait objects
+// These aliases improve readability and satisfy clippy::type_complexity
+#[allow(clippy::type_complexity)]
+pub type StreamEventCb = dyn Fn(&MessageStreamEvent, &Message) + Send + Sync;
+#[allow(clippy::type_complexity)]
+pub type TextCb = dyn Fn(&str, &str) + Send + Sync;
+#[allow(clippy::type_complexity)]
+pub type MessageCb = dyn Fn(&Message) + Send + Sync;
+#[allow(clippy::type_complexity)]
+pub type ErrorCb = dyn Fn(&AnthropicError) + Send + Sync;
+#[allow(clippy::type_complexity)]
+pub type VoidCb = dyn Fn() + Send + Sync;
 
 /// Types of events that can be handled by MessageStream.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -32,28 +45,28 @@ pub enum EventType {
 /// with MessageStream for handling various events during streaming.
 pub enum EventHandler {
     /// Handler for stream events - receives event and current message snapshot
-    StreamEvent(Box<dyn Fn(&MessageStreamEvent, &Message) + Send + Sync>),
-    
+    StreamEvent(Box<StreamEventCb>),
+
     /// Handler for text deltas - receives delta text and current accumulated text
-    Text(Box<dyn Fn(&str, &str) + Send + Sync>),
-    
+    Text(Box<TextCb>),
+
     /// Handler for complete messages
-    Message(Box<dyn Fn(&Message) + Send + Sync>),
-    
+    Message(Box<MessageCb>),
+
     /// Handler for the final message when stream completes
-    FinalMessage(Box<dyn Fn(&Message) + Send + Sync>),
-    
+    FinalMessage(Box<MessageCb>),
+
     /// Handler for errors
-    Error(Box<dyn Fn(&AnthropicError) + Send + Sync>),
-    
+    Error(Box<ErrorCb>),
+
     /// Handler for stream end
-    End(Box<dyn Fn() + Send + Sync>),
-    
+    End(Box<VoidCb>),
+
     /// Handler for connection established
-    Connect(Box<dyn Fn() + Send + Sync>),
-    
+    Connect(Box<VoidCb>),
+
     /// Handler for stream abort
-    Abort(Box<dyn Fn(&AnthropicError) + Send + Sync>),
+    Abort(Box<ErrorCb>),
 }
 
 impl std::fmt::Debug for EventHandler {
@@ -87,7 +100,7 @@ mod tests {
         let mut map: HashMap<EventType, Vec<String>> = HashMap::new();
         map.insert(EventType::Text, vec!["handler1".to_string()]);
         map.insert(EventType::Error, vec!["handler2".to_string()]);
-        
+
         assert!(map.contains_key(&EventType::Text));
         assert!(map.contains_key(&EventType::Error));
         assert!(!map.contains_key(&EventType::Connect));
@@ -100,4 +113,4 @@ mod tests {
         assert!(debug_str.contains("Text"));
         assert!(debug_str.contains("<callback>"));
     }
-} 
+}

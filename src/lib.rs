@@ -32,62 +32,109 @@
 
 pub mod client;
 pub mod config;
-pub mod types;
+pub mod files;
 pub mod http;
-pub mod utils;
 pub mod resources;
 pub mod streaming;
-pub mod tools;
-pub mod files;
 pub mod tokens;
+pub mod tools;
+pub mod types;
+pub mod utils;
 
 // Re-exports for public API
 pub use client::Anthropic;
 pub use config::{ClientConfig, LogLevel};
-pub use types::{
-    AnthropicError, Result, RequestId, Usage,
-    Message, Role, ContentBlock, ImageSource, StopReason,
-    MessageCreateParams, MessageParam, MessageContent, ContentBlockParam,
-    MessageCreateBuilder, SystemContentBlock, SystemParam, CacheControl, ThinkingConfig, Model,
-    // Streaming types
-    MessageStreamEvent, MessageDelta, MessageDeltaUsage,
-    ContentBlockDelta, TextCitation,
-    // Tool types
-    Tool, ToolBuilder, ToolChoice, ToolUse, ToolResult, ToolResultContent,
-    ToolValidationError, ServerTool, WebSearchParameters,
-    // Batch types (Beta)
-    MessageBatch, BatchStatus, BatchRequestCounts, BatchRequest, BatchRequestBuilder,
-    BatchResult, BatchResponse, BatchResponseBody, BatchError,
-    BatchCreateParams, BatchListParams, BatchList,
-    // Files API types (Beta)
-    FileObject, FilePurpose, FileStatus, FileUploadParams, FileListParams, FileList,
-    FileOrder, UploadProgress, StorageInfo, FileDownload,
-    // Models API types
-    ModelObject, ModelListParams, ModelList, ModelCapabilities, ModelCapability,
-    ModelPricing, PricingTier, ModelComparison, ModelPerformance, ComparisonSummary,
-    ModelRequirements, ModelUsageRecommendations, ModelRecommendation,
-    RecommendedParameters, PerformanceExpectations, CostRange, QualityLevel,
-    CostEstimation, CostBreakdown,
-};
-pub use tools::{
-    ToolRegistry, ToolExecutor, ToolConversation, ToolFunction,
-    ToolExecutionConfig, ConversationConfig, ToolError,
-};
-pub use resources::{
-    MessagesResource, BatchesResource, FilesResource, ModelsResource,
-};
-pub use files::{
-    File, FileData, FileSource, FileConstraints, FileBuilder, FileError, to_file,
-};
-pub use tokens::{
-    TokenCounter, UsageStats, ModelUsage, RequestUsage, ModelPrice,
-    UsageSummary,
-};
-pub use http::{
-    RetryPolicy, RetryCondition, RetryExecutor, RetryResult, default_retry, api_retry,
-};
-pub use streaming::MessageStream;
+pub use files::{to_file, File, FileBuilder, FileConstraints, FileData, FileError, FileSource};
 pub use http::auth::AuthMethod;
+pub use http::{api_retry, default_retry, RetryCondition, RetryExecutor, RetryPolicy, RetryResult};
+pub use resources::{BatchesResource, FilesResource, MessagesResource, ModelsResource};
+pub use streaming::MessageStream;
+pub use tokens::{ModelPrice, ModelUsage, RequestUsage, TokenCounter, UsageStats, UsageSummary};
+pub use tools::{
+    ConversationConfig, ToolConversation, ToolError, ToolExecutionConfig, ToolExecutor,
+    ToolFunction, ToolRegistry,
+};
+pub use types::{
+    AnthropicError,
+    BatchCreateParams,
+    BatchError,
+    BatchList,
+    BatchListParams,
+    BatchRequest,
+    BatchRequestBuilder,
+    BatchRequestCounts,
+    BatchResponse,
+    BatchResponseBody,
+    BatchResult,
+    BatchStatus,
+    CacheControl,
+    ComparisonSummary,
+    ContentBlock,
+    ContentBlockDelta,
+    ContentBlockParam,
+    CostBreakdown,
+    CostEstimation,
+    CostRange,
+    FileDownload,
+    FileList,
+    FileListParams,
+    // Files API types (Beta)
+    FileObject,
+    FileOrder,
+    FilePurpose,
+    FileStatus,
+    FileUploadParams,
+    ImageSource,
+    Message,
+    // Batch types (Beta)
+    MessageBatch,
+    MessageContent,
+    MessageCreateBuilder,
+    MessageCreateParams,
+    MessageDelta,
+    MessageDeltaUsage,
+    MessageParam,
+    // Streaming types
+    MessageStreamEvent,
+    Model,
+    ModelCapabilities,
+    ModelCapability,
+    ModelComparison,
+    ModelList,
+    ModelListParams,
+    // Models API types
+    ModelObject,
+    ModelPerformance,
+    ModelPricing,
+    ModelRecommendation,
+    ModelRequirements,
+    ModelUsageRecommendations,
+    PerformanceExpectations,
+    PricingTier,
+    QualityLevel,
+    RecommendedParameters,
+    RequestId,
+    Result,
+    Role,
+    ServerTool,
+    StopReason,
+    StorageInfo,
+    SystemContentBlock,
+    SystemParam,
+    TextCitation,
+    ThinkingConfig,
+    // Tool types
+    Tool,
+    ToolBuilder,
+    ToolChoice,
+    ToolResult,
+    ToolResultContent,
+    ToolUse,
+    ToolValidationError,
+    UploadProgress,
+    Usage,
+    WebSearchParameters,
+};
 
 /// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -99,4 +146,4 @@ pub const USER_AGENT: &str = concat!("anthropic-sdk-rust/", env!("CARGO_PKG_VERS
 pub type Error = AnthropicError;
 
 // Module re-exports for organized access
-pub use types as types_module; 
+pub use types as types_module;

@@ -447,7 +447,7 @@ mod tests {
         let config = StreamConfig::default();
         assert_eq!(config.buffer_size, 1000);
         assert_eq!(config.event_timeout, Some(30));
-        assert_eq!(config.retry_on_error, true);
+        assert!(config.retry_on_error);
         assert_eq!(config.max_retries, Some(3));
     }
 

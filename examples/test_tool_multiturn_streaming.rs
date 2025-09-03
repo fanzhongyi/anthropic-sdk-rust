@@ -617,12 +617,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
-                MessageStreamEvent::InputJson {
-                    partial_json,
-                } => {
-                    println!(
-                        "🔧 Input JSON event: {partial_json}"
-                    );
+                MessageStreamEvent::InputJson { partial_json } => {
+                    println!("🔧 Input JSON event: {partial_json}");
                     // This is an independent event that provides incremental JSON parsing info
                     // It's informational and doesn't need to update specific tool indices
                 }
@@ -810,9 +806,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             MessageStreamEvent::MessageStop => {
                 println!("\n🏁 Conversation completed!");
             }
-            MessageStreamEvent::InputJson {
-                partial_json,
-            } => {
+            MessageStreamEvent::InputJson { partial_json } => {
                 println!("🔧 Input JSON event: {partial_json}");
             }
             _ => {}

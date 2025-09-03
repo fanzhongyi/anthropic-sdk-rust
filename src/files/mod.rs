@@ -1,11 +1,11 @@
-use std::io::{Read, BufReader};
-use std::path::Path;
-use std::fs::File as StdFile;
-use std::fmt;
+use base64::{engine::general_purpose, Engine as _};
 use bytes::Bytes;
 use mime::Mime;
-use sha2::{Sha256, Digest};
-use base64::{Engine as _, engine::general_purpose};
+use sha2::{Digest, Sha256};
+use std::fmt;
+use std::fs::File as StdFile;
+use std::io::{BufReader, Read};
+use std::path::Path;
 
 /// Represents a file that can be uploaded to the Anthropic API
 #[derive(Debug, Clone)]
@@ -61,25 +61,28 @@ impl Default for FileConstraints {
 pub enum FileError {
     #[error("File not found: {path}")]
     NotFound { path: String },
-    
+
     #[error("File too large: {size} bytes (max: {max_size} bytes)")]
     TooLarge { size: u64, max_size: u64 },
-    
+
     #[error("Invalid MIME type: {mime_type} (allowed: {allowed:?})")]
-    InvalidMimeType { mime_type: String, allowed: Vec<String> },
-    
+    InvalidMimeType {
+        mime_type: String,
+        allowed: Vec<String>,
+    },
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Invalid base64 data: {0}")]
     InvalidBase64(#[from] base64::DecodeError),
-    
+
     #[error("MIME detection failed")]
     MimeDetectionFailed,
-    
+
     #[error("Hash verification failed")]
     HashVerificationFailed,
-    
+
     #[error("Invalid file data")]
     InvalidData,
 }
@@ -94,7 +97,7 @@ impl File {
         let name = name.into();
         let bytes = bytes.into();
         let size = bytes.len() as u64;
-        
+
         let mime_type = match mime_type {
             Some(mime) => mime,
             None => detect_mime_type(&name, Some(&bytes))?,
@@ -112,20 +115,21 @@ impl File {
     /// Create a new file from a file path
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, FileError> {
         let path = path.as_ref();
-        
+
         if !path.exists() {
             return Err(FileError::NotFound {
                 path: path.display().to_string(),
             });
         }
-        
+
         let metadata = std::fs::metadata(path)?;
         let size = metadata.len();
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("file")
             .to_string();
-            
+
         let mime_type = detect_mime_type(&name, None)?;
 
         Ok(Self {
@@ -145,11 +149,11 @@ impl File {
     ) -> Result<Self, FileError> {
         let name = name.into();
         let base64_data = base64_data.into();
-        
+
         // Decode to get size
         let decoded = general_purpose::STANDARD.decode(&base64_data)?;
         let size = decoded.len() as u64;
-        
+
         let mime_type = match mime_type {
             Some(mime) => mime,
             None => detect_mime_type(&name, Some(&decoded))?,
@@ -173,12 +177,12 @@ impl File {
         let name = name.into();
         let metadata = std_file.metadata()?;
         let size = metadata.len();
-        
+
         // Read file contents
         let mut reader = BufReader::new(std_file);
         let mut buffer = Vec::new();
         reader.read_to_end(&mut buffer)?;
-        
+
         let mime_type = match mime_type {
             Some(mime) => mime,
             None => detect_mime_type(&name, Some(&buffer))?,
@@ -223,15 +227,15 @@ impl File {
             FileData::Base64(base64_data) => {
                 let decoded = general_purpose::STANDARD.decode(base64_data)?;
                 Ok(Bytes::from(decoded))
-            },
+            }
             FileData::Path(path) => {
                 let bytes = tokio::fs::read(path).await?;
                 Ok(Bytes::from(bytes))
-            },
+            }
             FileData::TempFile(path) => {
                 let bytes = tokio::fs::read(path).await?;
                 Ok(Bytes::from(bytes))
-            },
+            }
         }
     }
 
@@ -291,16 +295,16 @@ pub async fn to_file(
         FileSource::Bytes(bytes) => {
             let name = name.unwrap_or_else(|| "file".to_string());
             File::from_bytes(name, bytes, mime_type)
-        },
+        }
         FileSource::Base64(base64_data) => {
             let name = name.unwrap_or_else(|| "file".to_string());
             File::from_base64(name, base64_data, mime_type)
-        },
+        }
         FileSource::Path(path) => File::from_path(path),
         FileSource::StdFile(std_file, file_name) => {
             let name = name.or(file_name).unwrap_or_else(|| "file".to_string());
             File::from_std_file(std_file, name, mime_type)
-        },
+        }
     }
 }
 
@@ -329,42 +333,50 @@ fn detect_mime_type(filename: &str, data: Option<&[u8]>) -> Result<Mime, FileErr
                 "webp" => "image/webp".parse().unwrap(),
                 "svg" => mime::IMAGE_SVG,
                 "bmp" => "image/bmp".parse().unwrap(),
-                
+
                 // Documents
                 "pdf" => "application/pdf".parse().unwrap(),
                 "doc" => "application/msword".parse().unwrap(),
-                "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document".parse().unwrap(),
+                "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    .parse()
+                    .unwrap(),
                 "txt" => mime::TEXT_PLAIN,
                 "md" => "text/markdown".parse().unwrap(),
                 "rtf" => "application/rtf".parse().unwrap(),
-                
+
                 // Spreadsheets
                 "xls" => "application/vnd.ms-excel".parse().unwrap(),
-                "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".parse().unwrap(),
-                
+                "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    .parse()
+                    .unwrap(),
+
                 // Presentations
                 "ppt" => "application/vnd.ms-powerpoint".parse().unwrap(),
-                "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation".parse().unwrap(),
-                
+                "pptx" => {
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        .parse()
+                        .unwrap()
+                }
+
                 // Audio
                 "mp3" => "audio/mpeg".parse().unwrap(),
                 "wav" => "audio/wav".parse().unwrap(),
                 "ogg" => "audio/ogg".parse().unwrap(),
-                
+
                 // Video
                 "mp4" => "video/mp4".parse().unwrap(),
                 "avi" => "video/x-msvideo".parse().unwrap(),
                 "mov" => "video/quicktime".parse().unwrap(),
-                
+
                 // Archives
                 "zip" => "application/zip".parse().unwrap(),
                 "tar" => "application/x-tar".parse().unwrap(),
                 "gz" => "application/gzip".parse().unwrap(),
-                
+
                 // JSON/XML
                 "json" => mime::APPLICATION_JSON,
                 "xml" => mime::TEXT_XML,
-                
+
                 _ => mime::APPLICATION_OCTET_STREAM,
             };
             return Ok(mime_type);
@@ -375,22 +387,22 @@ fn detect_mime_type(filename: &str, data: Option<&[u8]>) -> Result<Mime, FileErr
     if let Some(bytes) = data {
         if bytes.len() >= 4 {
             let magic = &bytes[0..4];
-            
+
             // PNG magic bytes
             if magic == [0x89, 0x50, 0x4E, 0x47] {
                 return Ok(mime::IMAGE_PNG);
             }
-            
+
             // JPEG magic bytes
             if magic[0..2] == [0xFF, 0xD8] {
                 return Ok(mime::IMAGE_JPEG);
             }
-            
+
             // PDF magic bytes
             if magic == [0x25, 0x50, 0x44, 0x46] {
                 return Ok("application/pdf".parse().unwrap());
             }
-            
+
             // GIF magic bytes
             if magic[0..3] == [0x47, 0x49, 0x46] {
                 return Ok(mime::IMAGE_GIF);
@@ -449,15 +461,15 @@ impl FileBuilder {
     /// Build file from source
     pub async fn build(self, source: FileSource) -> Result<File, FileError> {
         let mut file = to_file(source, self.name, self.mime_type).await?;
-        
+
         // Validate constraints
         file.validate(&self.constraints)?;
-        
+
         // Calculate hash if requested
         if self.calculate_hash {
             file.calculate_hash().await?;
         }
-        
+
         Ok(file)
     }
 }
@@ -482,11 +494,11 @@ impl fmt::Display for File {
 mod tests {
     use super::*;
 
-    #[test] 
+    #[test]
     fn test_file_from_bytes() {
         let data = b"Hello, world!";
         let file = File::from_bytes("test.txt", Bytes::from_static(data), None).unwrap();
-        
+
         assert_eq!(file.name, "test.txt");
         assert_eq!(file.size, 13);
         assert_eq!(file.mime_type, mime::TEXT_PLAIN);
@@ -494,37 +506,46 @@ mod tests {
 
     #[test]
     fn test_mime_detection() {
-        assert_eq!(detect_mime_type("test.jpg", None).unwrap(), mime::IMAGE_JPEG);
+        assert_eq!(
+            detect_mime_type("test.jpg", None).unwrap(),
+            mime::IMAGE_JPEG
+        );
         assert_eq!(detect_mime_type("test.png", None).unwrap(), mime::IMAGE_PNG);
-        assert_eq!(detect_mime_type("test.txt", None).unwrap(), mime::TEXT_PLAIN);
-        assert_eq!(detect_mime_type("test.json", None).unwrap(), mime::APPLICATION_JSON);
+        assert_eq!(
+            detect_mime_type("test.txt", None).unwrap(),
+            mime::TEXT_PLAIN
+        );
+        assert_eq!(
+            detect_mime_type("test.json", None).unwrap(),
+            mime::APPLICATION_JSON
+        );
     }
 
     #[test]
     fn test_file_validation() {
         let data = b"Hello, world!";
         let file = File::from_bytes("test.txt", Bytes::from_static(data), None).unwrap();
-        
+
         let constraints = FileConstraints {
             max_size: 10,
             allowed_types: None,
             require_hash: false,
         };
-        
+
         // Should fail size validation
         assert!(file.validate(&constraints).is_err());
     }
 
     #[test]
     fn test_file_type_checks() {
-        let image_file = File::from_bytes("test.jpg", Bytes::new(), Some(mime::IMAGE_JPEG)).unwrap();
+        let image_file =
+            File::from_bytes("test.jpg", Bytes::new(), Some(mime::IMAGE_JPEG)).unwrap();
         let text_file = File::from_bytes("test.txt", Bytes::new(), Some(mime::TEXT_PLAIN)).unwrap();
-        
+
         assert!(image_file.is_image());
         assert!(!image_file.is_text());
-        
+
         assert!(text_file.is_text());
         assert!(!text_file.is_image());
     }
 }
-

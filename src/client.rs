@@ -1,8 +1,8 @@
 use crate::config::ClientConfig;
 use crate::http::HttpClient;
+use crate::resources::{BatchesResource, FilesResource, MessagesResource, ModelsResource};
 use crate::types::errors::Result;
 use crate::utils::init_logging;
-use crate::resources::{MessagesResource, BatchesResource, FilesResource, ModelsResource};
 
 /// Main Anthropic API client
 #[derive(Clone)]

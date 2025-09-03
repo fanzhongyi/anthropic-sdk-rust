@@ -1,8 +1,9 @@
+#![allow(dead_code)]
+
 use anthropic_sdk::{
     types::{ContentBlockParam, Message, MessageContent, ToolChoice, ToolResult},
-    Anthropic, AnthropicError, File, FileConstraints, RetryCondition,
-    RetryExecutor, RetryPolicy, RetryResult, TokenCounter, Tool, ToolExecutor, ToolFunction,
-    ToolRegistry,
+    Anthropic, AnthropicError, File, FileConstraints, RetryCondition, RetryExecutor, RetryPolicy,
+    RetryResult, TokenCounter, Tool, ToolExecutor, ToolFunction, ToolRegistry,
 };
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -187,8 +188,7 @@ impl ToolFunction for SentimentAnalysisTool {
         let confidence = ((positive_count + negative_count) as f64
             / text.split_whitespace().count() as f64
             * 100.0)
-            .min(95.0)
-            .max(10.0);
+            .clamp(10.0, 95.0);
 
         let result = json!({
             "sentiment": sentiment,
@@ -202,6 +202,7 @@ impl ToolFunction for SentimentAnalysisTool {
 }
 
 /// Production-ready text analysis tool
+#[allow(dead_code)]
 struct TextAnalysisTool;
 
 #[async_trait]
@@ -316,14 +317,20 @@ impl DocumentAnalysisService {
         mime_type: &str,
     ) -> Result<DocumentAnalysisResult, DocumentAnalysisError> {
         let start_time = Instant::now();
-        let request_id = uuid::Uuid::new_v4().to_string();
+        let request_id = format!(
+            "req-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
 
         info!("Processing document: {} ({})", filename, mime_type);
         debug!("Request ID: {}", request_id);
 
         // Step 1: Validate file
         let file = self.validate_and_create_file(file_data, filename, mime_type)?;
-        info!("File validation successful: {} bytes", file.size());
+        info!("File validation successful: {} bytes", file.size);
 
         // Step 2: Extract data using tools with retry logic
         let extraction_result = self.extract_data_with_retry(&file).await?;
@@ -338,7 +345,7 @@ impl DocumentAnalysisService {
         let result = DocumentAnalysisResult {
             request_id,
             filename: filename.to_string(),
-            file_size: file.size(),
+            file_size: file.size as usize,
             mime_type: mime_type.to_string(),
             extraction_data: extraction_result,
             claude_analysis,
@@ -358,24 +365,24 @@ impl DocumentAnalysisService {
         mime_type: &str,
     ) -> Result<File, DocumentAnalysisError> {
         // Create file constraints for validation
-        let constraints = FileConstraints::new()
-            .max_size(10 * 1024 * 1024) // 10MB
-            .allowed_types(vec![
-                "text/plain".to_string(),
-                "text/csv".to_string(),
-                "application/json".to_string(),
-                "image/png".to_string(),
-                "image/jpeg".to_string(),
-            ])
-            .require_hash(true);
+        let constraints = FileConstraints {
+            max_size: 10 * 1024 * 1024, // 10MB
+            allowed_types: Some(vec![
+                "text/plain".parse().unwrap(),
+                "text/csv".parse().unwrap(),
+                "application/json".parse().unwrap(),
+                "image/png".parse().unwrap(),
+                "image/jpeg".parse().unwrap(),
+            ]),
+            require_hash: true,
+        };
 
         // Create file
-        let file = File::from_bytes(data.to_vec(), filename, mime_type)
+        let file = File::from_bytes(filename, data.to_vec(), Some(mime_type.parse().unwrap()))
             .map_err(DocumentAnalysisError::FileCreation)?;
 
         // Validate against constraints
-        constraints
-            .validate(&file)
+        file.validate(&constraints)
             .map_err(DocumentAnalysisError::FileValidation)?;
 
         Ok(file)
@@ -383,14 +390,26 @@ impl DocumentAnalysisService {
 
     /// Extract data using tools with retry logic
     async fn extract_data_with_retry(&self, file: &File) -> Result<Value, DocumentAnalysisError> {
-        let extraction_request = json!({
-            "id": format!("extract_{}", uuid::Uuid::new_v4()),
-            "name": "extract_data",
-            "input": {
-                "file_type": file.mime_type(),
-                "content": String::from_utf8_lossy(&file.to_bytes().unwrap_or_default())
-            }
-        });
+        let id = format!(
+            "extract-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let bytes = file
+            .to_bytes()
+            .await
+            .map_err(DocumentAnalysisError::FileProcessing)?;
+        let content_str = String::from_utf8_lossy(&bytes).to_string();
+        let extraction_request = vec![anthropic_sdk::types::ToolUse {
+            id,
+            name: "extract_data".to_string(),
+            input: json!({
+                "file_type": file.mime_type.to_string(),
+                "content": content_str
+            }),
+        }];
 
         let retry_executor = Arc::clone(&self.retry_executor);
         let tool_executor = &self.tool_executor;
@@ -399,16 +418,36 @@ impl DocumentAnalysisService {
             .execute(|| {
                 let request = extraction_request.clone();
                 async move {
-                    tool_executor
-                        .execute_tool(&request)
-                        .await
-                        .map_err(|e| AnthropicError::Other(e.to_string()))
+                    let results = tool_executor.execute_multiple(&request).await;
+                    Ok(results)
                 }
             })
             .await;
 
         match result {
-            RetryResult::Success(data) => Ok(data),
+            RetryResult::Success(results) => {
+                let mut last_err: Option<AnthropicError> = None;
+                for res in results {
+                    match res {
+                        Ok(tool_result) => {
+                            use anthropic_sdk::types::ToolResultContent as TRC;
+                            let value = match tool_result.content {
+                                TRC::Json(v) => v,
+                                TRC::Text(s) => serde_json::from_str(&s)
+                                    .unwrap_or_else(|_| json!({ "text": s })),
+                                TRC::Blocks(blocks) => json!({ "blocks": blocks }),
+                            };
+                            return Ok(value);
+                        }
+                        Err(e) => {
+                            last_err = Some(AnthropicError::Other(e.to_string()));
+                        }
+                    }
+                }
+                Err(DocumentAnalysisError::ToolExecution(last_err.unwrap_or(
+                    AnthropicError::Other("No successful tool result".into()),
+                )))
+            }
             RetryResult::Failed(error) => Err(DocumentAnalysisError::ToolExecution(error)),
         }
     }
@@ -425,8 +464,9 @@ impl DocumentAnalysisService {
         let content = MessageContent::Blocks(vec![
             ContentBlockParam::text("Please analyze this document comprehensively:"),
             ContentBlockParam::from_file(file.clone())
+                .await
                 .map_err(DocumentAnalysisError::FileProcessing)?,
-            ContentBlockParam::text(&format!(
+            ContentBlockParam::text(format!(
                 "Extracted data: {}",
                 serde_json::to_string_pretty(extraction_data).unwrap_or_default()
             )),
@@ -436,7 +476,7 @@ impl DocumentAnalysisService {
         ]);
 
         // Setup tools for Claude to use
-        let tools = self.tool_executor.registry().get_all_tools();
+        let tools = self.tool_executor.registry().get_tool_definitions();
 
         let retry_executor = Arc::clone(&self.retry_executor);
         let client = &self.anthropic_client;
@@ -446,15 +486,17 @@ impl DocumentAnalysisService {
                 let content = content.clone();
                 let tools = tools.clone();
                 async move {
-                    client
-                        .messages()
-                        .create_with_builder("claude-3-5-sonnet-latest", 2048)
-                        .message(anthropic_sdk::types::Role::User, content)
-                        .tools(tools)
-                        .tool_choice(ToolChoice::Auto)
-                        .temperature(0.3)
-                        .send()
-                        .await
+                    let params = anthropic_sdk::types::MessageCreateBuilder::new(
+                        "claude-3-5-sonnet-latest",
+                        2048,
+                    )
+                    .message(anthropic_sdk::types::Role::User, content)
+                    .tools(tools)
+                    .tool_choice(ToolChoice::Auto)
+                    .temperature(0.3)
+                    .build();
+
+                    client.messages().create(params).await
                 }
             })
             .await;
@@ -471,15 +513,15 @@ impl DocumentAnalysisService {
     }
 
     /// Calculate processing costs
-    fn calculate_processing_cost(&self, message: &Message) -> Option<anthropic_sdk::CostBreakdown> {
-        if let Some(usage) = &message.usage {
-            Some(
-                self.token_counter
-                    .record_usage("claude-3-5-sonnet-latest", usage),
-            )
-        } else {
-            None
-        }
+    fn calculate_processing_cost(
+        &self,
+        message: &Message,
+    ) -> Option<anthropic_sdk::tokens::CostBreakdown> {
+        let usage = &message.usage;
+        Some(
+            self.token_counter
+                .record_usage("claude-3-5-sonnet-latest", usage),
+        )
     }
 
     /// Get service metrics and statistics
@@ -488,12 +530,16 @@ impl DocumentAnalysisService {
         let retry_policy = self.retry_executor.get_policy();
 
         ServiceMetrics {
-            total_requests: usage_summary.request_count,
+            total_requests: if usage_summary.avg_cost_per_request > 0.0 {
+                (usage_summary.total_cost_usd / usage_summary.avg_cost_per_request).round() as u32
+            } else {
+                0
+            },
             total_cost: usage_summary.total_cost_usd,
             average_cost_per_request: usage_summary.avg_cost_per_request,
             session_duration: usage_summary.session_duration,
             retry_policy_max_retries: retry_policy.max_retries,
-            tools_available: self.tool_executor.registry().list_tools().len() as u32,
+            tools_available: self.tool_executor.registry().len() as u32,
         }
     }
 }
@@ -508,7 +554,7 @@ pub struct DocumentAnalysisResult {
     pub extraction_data: Value,
     pub claude_analysis: Message,
     pub processing_time: Duration,
-    pub cost_breakdown: Option<anthropic_sdk::CostBreakdown>,
+    pub cost_breakdown: Option<anthropic_sdk::tokens::CostBreakdown>,
 }
 
 /// Service metrics for monitoring

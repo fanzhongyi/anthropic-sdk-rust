@@ -4,8 +4,7 @@
 //! including callback-based processing, manual iteration, and error handling.
 
 use anthropic_sdk::{
-    Anthropic, MessageCreateBuilder, MessageStreamEvent, ContentBlockDelta,
-    Result,
+    Anthropic, ContentBlockDelta, MessageCreateBuilder, MessageStreamEvent, Result,
 };
 use futures::StreamExt;
 use std::io::{self, Write};
@@ -14,21 +13,21 @@ use std::io::{self, Write};
 async fn main() -> Result<()> {
     // Initialize tracing for better debugging
     tracing_subscriber::fmt::init();
-    
+
     println!("🤖 Anthropic Rust SDK - Streaming Example");
     println!("==========================================\n");
-    
+
     // Note: In a real application, you'd get the API key from environment
     // or configuration. For this example, we'll use a placeholder.
     println!("⚠️  This is a demonstration example.");
     println!("📝 To run with real API calls, set ANTHROPIC_API_KEY environment variable.\n");
-    
+
     // Uncomment the following line when you have a real API key:
     // let client = Anthropic::from_env()?;
-    
+
     // For demonstration purposes, we'll show the API structure
     demonstrate_streaming_api_structure().await;
-    
+
     Ok(())
 }
 
@@ -36,10 +35,11 @@ async fn main() -> Result<()> {
 async fn demonstrate_streaming_api_structure() {
     println!("🔄 Streaming API Usage Patterns");
     println!("=================================\n");
-    
+
     // Example 1: Basic streaming with callbacks
     println!("1️⃣  Callback-based Streaming:");
-    print_code_example(r#"
+    print_code_example(
+        r#"
 let client = Anthropic::from_env()?;
 
 let final_message = client.messages()
@@ -63,11 +63,13 @@ let final_message = client.messages()
     .await?;
 
 println!("\n📜 Final message: {:?}", final_message);
-"#);
-    
+"#,
+    );
+
     // Example 2: Manual stream iteration
     println!("\n2️⃣  Manual Stream Iteration:");
-    print_code_example(r#"
+    print_code_example(
+        r#"
 let client = Anthropic::from_env()?;
 
 let stream = client.messages().create_stream(
@@ -116,11 +118,13 @@ while let Some(event) = stream.next().await {
 }
 
 println!("\n📜 Complete response:\n{}", content);
-"#);
-    
+"#,
+    );
+
     // Example 3: Error handling and recovery
     println!("\n3️⃣  Error Handling:");
-    print_code_example(r#"
+    print_code_example(
+        r#"
 let client = Anthropic::from_env()?;
 
 match client.messages()
@@ -147,7 +151,7 @@ match client.messages()
             })
             .final_message()
             .await;
-            
+
         match result {
             Ok(message) => println!("✅ Success: {:?}", message),
             Err(e) => println!("❌ Failed: {}", e),
@@ -157,11 +161,13 @@ match client.messages()
         println!("❌ Failed to start stream: {}", e);
     }
 }
-"#);
-    
+"#,
+    );
+
     // Example 4: Advanced features
     println!("\n4️⃣  Advanced Streaming Features:");
-    print_code_example(r#"
+    print_code_example(
+        r#"
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -182,7 +188,7 @@ let final_message = client.messages()
         // Count words in real-time
         let words_in_delta = delta.split_whitespace().count();
         *word_count_clone.lock().unwrap() += words_in_delta;
-        
+
         print!("{}", delta);
         io::stdout().flush().unwrap();
     })
@@ -205,8 +211,9 @@ println!("⏱️  Duration: {:.2}s", elapsed.as_secs_f64());
 println!("📝 Words: {}", total_words);
 println!("🚀 Words/sec: {:.1}", total_words as f64 / elapsed.as_secs_f64());
 println!("🎯 Tokens: {}", final_message.usage.output_tokens);
-"#);
-    
+"#,
+    );
+
     println!("\n✨ Key Features Demonstrated:");
     println!("• Real-time text streaming with callbacks");
     println!("• Manual event processing and control");
@@ -214,7 +221,7 @@ println!("🎯 Tokens: {}", final_message.usage.output_tokens);
     println!("• Performance monitoring and statistics");
     println!("• Multiple event types (text, usage, completion)");
     println!("• Graceful stream termination and cleanup");
-    
+
     println!("\n🎯 Ready for Production Use!");
     println!("The streaming implementation provides full TypeScript SDK parity");
     println!("with zero-cost abstractions and memory-safe processing.");
@@ -236,10 +243,11 @@ fn print_code_example(code: &str) {
 #[allow(dead_code)]
 async fn run_real_streaming_example() -> Result<()> {
     let client = Anthropic::from_env()?;
-    
+
     println!("🔄 Starting real streaming example...");
-    
-    let final_message = client.messages()
+
+    let final_message = client
+        .messages()
         .create_with_builder("claude-3-5-sonnet-latest", 1024)
         .user("Write a short poem about Rust programming")
         .system("You are a creative programmer poet")
@@ -255,35 +263,39 @@ async fn run_real_streaming_example() -> Result<()> {
         })
         .final_message()
         .await?;
-    
+
     println!("\n\n✅ Stream completed!");
     println!("📊 Final usage: {:?}", final_message.usage);
-    
+
     Ok(())
 }
 
 #[allow(dead_code)]
 async fn demonstrate_manual_iteration() -> Result<()> {
     let client = Anthropic::from_env()?;
-    
-    let mut stream = client.messages().create_stream(
-        MessageCreateBuilder::new("claude-3-5-sonnet-latest", 512)
-            .user("Count from 1 to 5")
-            .stream(true)
-            .build()
-    ).await?;
-    
+
+    let mut stream = client
+        .messages()
+        .create_stream(
+            MessageCreateBuilder::new("claude-3-5-sonnet-latest", 512)
+                .user("Count from 1 to 5")
+                .stream(true)
+                .build(),
+        )
+        .await?;
+
     // Process events manually
     while let Some(event) = stream.next().await {
         match event? {
             MessageStreamEvent::MessageStart { message } => {
                 println!("📨 Started: {}", message.id);
             }
-            MessageStreamEvent::ContentBlockDelta { delta, .. } => {
-                if let ContentBlockDelta::TextDelta { text } = delta {
-                    print!("{text}");
-                    io::stdout().flush().unwrap();
-                }
+            MessageStreamEvent::ContentBlockDelta {
+                delta: ContentBlockDelta::TextDelta { text },
+                ..
+            } => {
+                print!("{text}");
+                io::stdout().flush().unwrap();
             }
             MessageStreamEvent::MessageStop => {
                 println!("\n✅ Completed!");
@@ -292,6 +304,6 @@ async fn demonstrate_manual_iteration() -> Result<()> {
             _ => {}
         }
     }
-    
+
     Ok(())
-} 
+}

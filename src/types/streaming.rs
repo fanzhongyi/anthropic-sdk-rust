@@ -4,8 +4,8 @@
 //! when streaming is enabled. It includes all event types and delta structures needed to
 //! process incremental responses from Claude.
 
+use crate::types::{ContentBlock, Message, ServerToolUsage, StopReason};
 use serde::{Deserialize, Serialize};
-use crate::types::{Message, ContentBlock, StopReason, ServerToolUsage};
 
 /// Main stream event type that encompasses all possible streaming events.
 ///
@@ -138,8 +138,6 @@ pub struct MessageDeltaUsage {
     pub server_tool_use: Option<ServerToolUsage>,
 }
 
-
-
 /// Delta updates for content blocks during streaming.
 ///
 /// This enum contains all possible types of incremental updates
@@ -263,8 +261,8 @@ pub type ContentBlockStopEvent = MessageStreamEvent;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
     use crate::types::Usage;
+    use serde_json;
 
     #[test]
     fn test_message_start_event_serialization() {

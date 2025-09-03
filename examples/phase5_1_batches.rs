@@ -1,9 +1,7 @@
 use anthropic_sdk::{
-    Anthropic,
-    BatchRequest, BatchCreateParams, BatchListParams, MessageBatch,
-    BatchStatus, BatchResult, BatchResponse, BatchResponseBody,
-    BatchRequestCounts, BatchError,
-    Message, ContentBlock, Role, StopReason, Usage,
+    Anthropic, BatchCreateParams, BatchError, BatchListParams, BatchRequest, BatchRequestCounts,
+    BatchResponse, BatchResponseBody, BatchResult, BatchStatus, ContentBlock, Message,
+    MessageBatch, Role, StopReason, Usage,
 };
 use std::{collections::HashMap, time::Duration};
 use tokio::time::sleep;
@@ -14,8 +12,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=====================================");
 
     // Initialize client (would normally use real API key)
-    let client = match Anthropic::from_env() {
-        Ok(client) => client,
+    let _client = match Anthropic::from_env() {
+        Ok(_client) => _client,
         Err(_) => {
             println!("⚠️  ANTHROPIC_API_KEY not set. This is a demo of the batch API structure.");
             simulate_batch_processing().await?;
@@ -78,7 +76,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✅ Created {} batch requests:", requests.len());
     for (i, request) in requests.iter().enumerate() {
-        println!("   {}. {} ({})", i + 1, request.custom_id, request.body.model);
+        println!(
+            "   {}. {} ({})",
+            i + 1,
+            request.custom_id,
+            request.body.model
+        );
     }
 
     // Demo 2: Create batch with metadata
@@ -96,7 +99,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✅ Batch parameters configured:");
     println!("   • Requests: {}", batch_params.requests.len());
-    println!("   • Completion window: {} hours", batch_params.completion_window.unwrap_or(24));
+    println!(
+        "   • Completion window: {} hours",
+        batch_params.completion_window.unwrap_or(24)
+    );
     println!("   • Metadata: {:?}", batch_params.metadata);
 
     // Demo 3: Batch creation and monitoring (simulated)
@@ -124,9 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📋 Demo 5: Batch Listing and Management");
     println!("---------------------------------------");
 
-    let list_params = BatchListParams::new()
-        .limit(10)
-        .after("batch_20241201_001");
+    let list_params = BatchListParams::new().limit(10).after("batch_20241201_001");
 
     println!("✅ List parameters:");
     println!("   • Limit: {:?}", list_params.limit);
@@ -164,7 +168,10 @@ async fn simulate_batch_processing() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let params = BatchCreateParams::new(requests);
-    println!("✅ Batch configured with {} requests", params.requests.len());
+    println!(
+        "✅ Batch configured with {} requests",
+        params.requests.len()
+    );
 
     // Simulate batch lifecycle
     let mut batch = create_mock_batch();
@@ -181,7 +188,11 @@ async fn simulate_batch_processing() -> Result<(), Box<dyn std::error::Error>> {
         batch.processing_status = *status;
         batch.request_counts.completed = (i as u32 * 25).min(100);
 
-        println!("   • {:?}: {}% complete", status, batch.completion_percentage());
+        println!(
+            "   • {:?}: {}% complete",
+            status,
+            batch.completion_percentage()
+        );
         sleep(Duration::from_millis(500)).await;
     }
 
@@ -218,10 +229,18 @@ async fn simulate_result_processing() {
     println!("📤 Processing batch results...");
 
     let sample_results = vec![
-        create_mock_result("translate_french", true, "Bonjour, comment allez-vous aujourd'hui ?"),
+        create_mock_result(
+            "translate_french",
+            true,
+            "Bonjour, comment allez-vous aujourd'hui ?",
+        ),
         create_mock_result("translate_spanish", true, "Hola, ¿cómo estás hoy?"),
         create_mock_result("translate_german", true, "Hallo, wie geht es dir heute?"),
-        create_mock_result("creative_story", true, "In a small workshop filled with canvases..."),
+        create_mock_result(
+            "creative_story",
+            true,
+            "In a small workshop filled with canvases...",
+        ),
         create_mock_result("code_review", false, "Rate limit exceeded"),
     ];
 
@@ -246,7 +265,10 @@ async fn simulate_result_processing() {
     println!("\n📊 Results Summary:");
     println!("   • Successful: {successful}");
     println!("   • Failed: {failed}");
-    println!("   • Success rate: {:.1}%", (successful as f64 / (successful + failed) as f64) * 100.0);
+    println!(
+        "   • Success rate: {:.1}%",
+        (successful as f64 / (successful + failed) as f64) * 100.0
+    );
 }
 
 fn create_mock_batch() -> MessageBatch {
@@ -281,7 +303,9 @@ fn create_mock_result(custom_id: &str, success: bool, content: &str) -> BatchRes
             id: format!("msg_{custom_id}"),
             type_: "message".to_string(),
             role: Role::Assistant,
-            content: vec![ContentBlock::Text { text: content.to_string() }],
+            content: vec![ContentBlock::Text {
+                text: content.to_string(),
+            }],
             model: "claude-3-haiku@20240307".to_string(),
             stop_reason: Some(StopReason::EndTurn),
             stop_sequence: None,

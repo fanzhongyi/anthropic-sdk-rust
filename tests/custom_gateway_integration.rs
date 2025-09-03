@@ -1,13 +1,13 @@
 use anthropic_sdk::{
-    Anthropic, ClientConfig, MessageCreateBuilder, AuthMethod,
-    types::ContentBlock,
+    types::ContentBlock, Anthropic, AuthMethod, ClientConfig, MessageCreateBuilder,
 };
 use dotenvy::dotenv;
 use std::time::Duration;
 
 /// Helper function to extract text content from response
 fn extract_text_from_content(content: &[ContentBlock]) -> String {
-    content.iter()
+    content
+        .iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text.as_str()),
             _ => None,
@@ -35,20 +35,20 @@ fn create_custom_client() -> Option<Anthropic> {
 /// Get model name from environment or use default
 fn get_model_name() -> String {
     dotenv().ok();
-    std::env::var("CUSTOM_MODEL_NAME")
-        .unwrap_or_else(|_| "claude-3-5-sonnet-latest".to_string())
+    std::env::var("CUSTOM_MODEL_NAME").unwrap_or_else(|_| "claude-3-5-sonnet-latest".to_string())
 }
 
 /// Skip test if no token is available
 macro_rules! require_token {
     ($client:ident) => {
         let $client = match create_custom_client() {
-            Some(client) => client,
+            Some(c) => c,
             None => {
                 println!("⚠️  CUSTOM_BEARER_TOKEN not found in environment - skipping test");
                 return;
             }
         };
+        let _ = &$client; // prevent unused variable warning when intentionally ignored
     };
 }
 
@@ -58,11 +58,14 @@ async fn test_basic_message_creation() {
 
     println!("🧪 Testing basic message creation");
 
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new(get_model_name(), 100)
-                .user("Hello! Please respond with 'Integration test successful' if you receive this.")
-                .build()
+                .user(
+                    "Hello! Please respond with 'Integration test successful' if you receive this.",
+                )
+                .build(),
         )
         .await;
 
@@ -75,7 +78,10 @@ async fn test_basic_message_creation() {
 
             let text = extract_text_from_content(&msg.content);
             println!("✅ Response: {text}");
-            println!("📊 Usage: {} input, {} output tokens", msg.usage.input_tokens, msg.usage.output_tokens);
+            println!(
+                "📊 Usage: {} input, {} output tokens",
+                msg.usage.input_tokens, msg.usage.output_tokens
+            );
         }
         Err(e) => panic!("Basic message creation failed: {e}"),
     }
@@ -87,12 +93,13 @@ async fn test_system_prompt() {
 
     println!("🧪 Testing system prompt functionality");
 
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new(get_model_name(), 150)
                 .system("You are a helpful math tutor. Always show your work and be precise.")
                 .user("What is 15 * 23? Please show the calculation.")
-                .build()
+                .build(),
         )
         .await;
 
@@ -102,8 +109,10 @@ async fn test_system_prompt() {
             println!("✅ Math response: {text}");
 
             // Verify it contains mathematical calculation
-            assert!(text.contains("15") || text.contains("23") || text.contains("345"),
-                "Response should contain mathematical elements");
+            assert!(
+                text.contains("15") || text.contains("23") || text.contains("345"),
+                "Response should contain mathematical elements"
+            );
         }
         Err(e) => panic!("System prompt test failed: {e}"),
     }
@@ -116,23 +125,25 @@ async fn test_temperature_parameters() {
     println!("🧪 Testing temperature and generation parameters");
 
     // Test with low temperature (more deterministic)
-    let response_low = client.messages()
+    let response_low = client
+        .messages()
         .create(
             MessageCreateBuilder::new(get_model_name(), 100)
                 .user("Write the word 'hello' in exactly 3 different languages.")
                 .temperature(0.1)
-                .build()
+                .build(),
         )
         .await
         .expect("Low temperature test should succeed");
 
     // Test with high temperature (more creative)
-    let response_high = client.messages()
+    let response_high = client
+        .messages()
         .create(
             MessageCreateBuilder::new(get_model_name(), 100)
                 .user("Write a very short creative poem about the color blue.")
                 .temperature(0.9)
-                .build()
+                .build(),
         )
         .await
         .expect("High temperature test should succeed");
@@ -143,8 +154,14 @@ async fn test_temperature_parameters() {
     println!("✅ Low temp (0.1): {text_low}");
     println!("✅ High temp (0.9): {text_high}");
 
-    assert!(!text_low.is_empty(), "Low temperature response should not be empty");
-    assert!(!text_high.is_empty(), "High temperature response should not be empty");
+    assert!(
+        !text_low.is_empty(),
+        "Low temperature response should not be empty"
+    );
+    assert!(
+        !text_high.is_empty(),
+        "High temperature response should not be empty"
+    );
 }
 
 #[tokio::test]
@@ -154,17 +171,24 @@ async fn test_max_tokens_limits() {
     println!("🧪 Testing max_tokens parameter");
 
     // Test with very low max_tokens
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new(get_model_name(), 20)
                 .user("Write a long essay about artificial intelligence and its impact on society.")
-                .build()
+                .build(),
         )
         .await
         .expect("Max tokens test should succeed");
 
-    println!("✅ Limited response: {}", extract_text_from_content(&response.content));
-    assert!(response.usage.output_tokens <= 20, "Should respect max_tokens limit");
+    println!(
+        "✅ Limited response: {}",
+        extract_text_from_content(&response.content)
+    );
+    assert!(
+        response.usage.output_tokens <= 20,
+        "Should respect max_tokens limit"
+    );
 }
 
 #[tokio::test]
@@ -175,11 +199,14 @@ async fn test_streaming_response() {
     println!("✅ Real-time streaming is now working with custom Gateway!");
     println!("📡 Starting stream request...");
 
-    let stream = client.messages().create_stream(
-        MessageCreateBuilder::new(get_model_name(), 100)
-            .user("Write a very short haiku about technology streaming")
-            .build()
-    ).await;
+    let stream = client
+        .messages()
+        .create_stream(
+            MessageCreateBuilder::new(get_model_name(), 100)
+                .user("Write a very short haiku about technology streaming")
+                .build(),
+        )
+        .await;
 
     match stream {
         Ok(stream) => {
@@ -218,7 +245,7 @@ async fn test_streaming_response() {
 
 #[tokio::test]
 async fn test_bearer_token_authentication() {
-    require_token!(client);
+    require_token!(_client);
 
     println!("🧪 Testing Bearer token authentication explicitly");
 
@@ -230,24 +257,33 @@ async fn test_bearer_token_authentication() {
 
         Anthropic::with_config(
             ClientConfig::new(token)
-                .with_base_url(std::env::var("CUSTOM_BASE_URL")
-                    .unwrap_or_else(|_| "https://your-custom-gateway.example.com/v1/anthropic".to_string()))
+                .with_base_url(std::env::var("CUSTOM_BASE_URL").unwrap_or_else(|_| {
+                    "https://your-custom-gateway.example.com/v1/anthropic".to_string()
+                }))
                 .with_auth_method(AuthMethod::Bearer)
-                .with_timeout(Duration::from_secs(45))
-        ).expect("Should create Bearer auth client")
+                .with_timeout(Duration::from_secs(45)),
+        )
+        .expect("Should create Bearer auth client")
     };
 
-    let response = bearer_client.messages()
+    let response = bearer_client
+        .messages()
         .create(
             MessageCreateBuilder::new(get_model_name(), 100)
                 .user("Confirm Bearer token authentication is working.")
-                .build()
+                .build(),
         )
         .await
         .expect("Bearer token auth should work");
 
-    println!("✅ Bearer auth response: {}", extract_text_from_content(&response.content));
-    assert!(!response.content.is_empty(), "Bearer auth response should not be empty");
+    println!(
+        "✅ Bearer auth response: {}",
+        extract_text_from_content(&response.content)
+    );
+    assert!(
+        !response.content.is_empty(),
+        "Bearer auth response should not be empty"
+    );
 }
 
 #[tokio::test]
@@ -256,15 +292,20 @@ async fn test_comprehensive_feature_set() {
 
     println!("🧪 Testing comprehensive feature combination");
 
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new(get_model_name(), 300)
-                .system("You are a creative writing assistant. Write in a specific, engaging style.")
-                .user("Write a very brief story about a robot discovering music for the first time.")
+                .system(
+                    "You are a creative writing assistant. Write in a specific, engaging style.",
+                )
+                .user(
+                    "Write a very brief story about a robot discovering music for the first time.",
+                )
                 .temperature(0.7)
                 .top_p(0.9)
                 .stop_sequences(vec!["END".to_string(), "FINISH".to_string()])
-                .build()
+                .build(),
         )
         .await
         .expect("Comprehensive feature test should succeed");
@@ -276,9 +317,14 @@ async fn test_comprehensive_feature_set() {
     assert!(!text.is_empty(), "Response should not be empty");
     assert!(text.len() > 50, "Should be a substantial response");
     assert!(response.usage.input_tokens > 0, "Should have input tokens");
-    assert!(response.usage.output_tokens > 0, "Should have output tokens");
+    assert!(
+        response.usage.output_tokens > 0,
+        "Should have output tokens"
+    );
 
     // Should not contain stop sequences
-    assert!(!text.contains("END") && !text.contains("FINISH"),
-        "Should not contain stop sequences");
+    assert!(
+        !text.contains("END") && !text.contains("FINISH"),
+        "Should not contain stop sequences"
+    );
 }

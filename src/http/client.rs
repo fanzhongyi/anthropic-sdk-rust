@@ -1,9 +1,9 @@
-use reqwest::{Client, Request, Response, RequestBuilder};
-use serde_json::Value;
 use crate::config::ClientConfig;
 use crate::http::auth::AuthHandler;
 use crate::types::errors::{AnthropicError, Result};
 use crate::types::shared::RequestId;
+use reqwest::{Client, Request, RequestBuilder, Response};
+use serde_json::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -22,7 +22,9 @@ impl HttpClient {
         let client = Client::builder()
             .timeout(config.timeout)
             .build()
-            .map_err(|e| AnthropicError::Connection { message: e.to_string() })?;
+            .map_err(|e| AnthropicError::Connection {
+                message: e.to_string(),
+            })?;
 
         let auth = AuthHandler::with_method(config.api_key.clone(), config.auth_method.clone());
 
@@ -44,12 +46,17 @@ impl HttpClient {
         for (key, value) in &self.beta_headers {
             headers.insert(
                 reqwest::header::HeaderName::from_bytes(key.as_bytes()).unwrap(),
-                reqwest::header::HeaderValue::from_str(value).unwrap()
+                reqwest::header::HeaderValue::from_str(value).unwrap(),
             );
         }
 
-        let response = self.client.execute(request).await
-            .map_err(|e| AnthropicError::Connection { message: e.to_string() })?;
+        let response =
+            self.client
+                .execute(request)
+                .await
+                .map_err(|e| AnthropicError::Connection {
+                    message: e.to_string(),
+                })?;
 
         self.handle_response_status(response).await
     }
@@ -93,17 +100,20 @@ impl HttpClient {
             Ok(body) => {
                 // Try to parse as JSON and extract error message
                 match serde_json::from_str::<Value>(&body) {
-                    Ok(json) => {
-                        json.get("error")
-                            .and_then(|e| e.get("message"))
-                            .and_then(|m| m.as_str())
-                            .unwrap_or(&body)
-                            .to_string()
-                    }
+                    Ok(json) => json
+                        .get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(|m| m.as_str())
+                        .unwrap_or(&body)
+                        .to_string(),
                     Err(_) => body,
                 }
             }
-            Err(_) => format!("HTTP {}: {}", status_code, status.canonical_reason().unwrap_or("Unknown")),
+            Err(_) => format!(
+                "HTTP {}: {}",
+                status_code,
+                status.canonical_reason().unwrap_or("Unknown")
+            ),
         };
 
         Err(AnthropicError::from_status(status_code, error_message))
@@ -111,7 +121,8 @@ impl HttpClient {
 
     /// Extract request ID from response headers
     pub fn extract_request_id(&self, response: &Response) -> Option<RequestId> {
-        response.headers()
+        response
+            .headers()
             .get("request-id")
             .and_then(|value| value.to_str().ok())
             .map(|id| RequestId::new(id.to_string()))
@@ -141,12 +152,18 @@ impl HttpClient {
 
     /// Add extended cache TTL beta header
     pub fn with_extended_cache_ttl(&mut self) {
-        self.beta_headers.insert("extended-cache-ttl-2025-04-11".to_string(), "true".to_string());
+        self.beta_headers.insert(
+            "extended-cache-ttl-2025-04-11".to_string(),
+            "true".to_string(),
+        );
     }
 
     /// Add interleaved thinking beta header
     pub fn with_interleaved_thinking(&mut self) {
-        self.beta_headers.insert("interleaved-thinking-2025-05-14".to_string(), "true".to_string());
+        self.beta_headers.insert(
+            "interleaved-thinking-2025-05-14".to_string(),
+            "true".to_string(),
+        );
     }
 
     /// Create a new client with beta headers

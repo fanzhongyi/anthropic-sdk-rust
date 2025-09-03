@@ -5,14 +5,8 @@
 //! reused across multiple requests.
 
 use anthropic_sdk::{
+    types::{CacheControl, ContentBlockParam, MessageCreateBuilder, Role, SystemContentBlock},
     Anthropic,
-    types::{
-        MessageCreateBuilder,
-        SystemContentBlock,
-        ContentBlockParam,
-        CacheControl,
-        Role
-    }
 };
 use std::error::Error;
 
@@ -73,40 +67,57 @@ Provide detailed, actionable recommendations with specific technologies and impl
 "#;
 
     // Create message with cached system prompt
-    let message = client.messages().create(
-        MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 1024)
-            .system(vec![
-                SystemContentBlock::text_with_cache(
+    let message = client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 1024)
+                .system(vec![SystemContentBlock::text_with_cache(
                     large_system_prompt,
-                    CacheControl::ephemeral()
-                )
-            ])
-            .user("How would you design a scalable e-commerce platform for 1 million users?")
-            .build()
-    ).await?;
+                    CacheControl::ephemeral(),
+                )])
+                .user("How would you design a scalable e-commerce platform for 1 million users?")
+                .build(),
+        )
+        .await?;
 
     println!("Response: {}", extract_text_content(&message.content));
-    println!("Cache creation tokens: {:?}", message.usage.cache_creation_input_tokens);
-    println!("Cache read tokens: {:?}", message.usage.cache_read_input_tokens);
+    println!(
+        "Cache creation tokens: {:?}",
+        message.usage.cache_creation_input_tokens
+    );
+    println!(
+        "Cache read tokens: {:?}",
+        message.usage.cache_read_input_tokens
+    );
 
     // Make another request that should hit the cache
     println!("\n--- Making follow-up request (should use cache) ---");
 
-    let follow_up = client.messages().create(
-        MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 1024)
-            .system(vec![
-                SystemContentBlock::text_with_cache(
+    let follow_up = client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 1024)
+                .system(vec![SystemContentBlock::text_with_cache(
                     large_system_prompt,
-                    CacheControl::ephemeral()
-                )
-            ])
-            .user("What about the database architecture for this e-commerce platform?")
-            .build()
-    ).await?;
+                    CacheControl::ephemeral(),
+                )])
+                .user("What about the database architecture for this e-commerce platform?")
+                .build(),
+        )
+        .await?;
 
-    println!("Follow-up response: {}", extract_text_content(&follow_up.content));
-    println!("Cache creation tokens: {:?}", follow_up.usage.cache_creation_input_tokens);
-    println!("Cache read tokens: {:?}", follow_up.usage.cache_read_input_tokens);
+    println!(
+        "Follow-up response: {}",
+        extract_text_content(&follow_up.content)
+    );
+    println!(
+        "Cache creation tokens: {:?}",
+        follow_up.usage.cache_creation_input_tokens
+    );
+    println!(
+        "Cache read tokens: {:?}",
+        follow_up.usage.cache_read_input_tokens
+    );
 
     Ok(())
 }
@@ -185,7 +196,10 @@ Our e-commerce platform serves millions of users globally with the following key
     ).await?;
 
     println!("Analysis: {}", extract_text_content(&message.content));
-    println!("Cache creation tokens: {:?}", message.usage.cache_creation_input_tokens);
+    println!(
+        "Cache creation tokens: {:?}",
+        message.usage.cache_creation_input_tokens
+    );
     println!("Total input tokens: {}", message.usage.total_input_tokens());
 
     Ok(())
@@ -212,12 +226,13 @@ async fn conversation_context_caching(client: &Anthropic) -> Result<(), Box<dyn 
 
         if content.len() > 500 {
             // Cache longer messages
-            builder = builder.message(role, vec![
-                ContentBlockParam::text_with_cache(
+            builder = builder.message(
+                role,
+                vec![ContentBlockParam::text_with_cache(
                     content.to_string(),
-                    CacheControl::ephemeral()
-                )
-            ]);
+                    CacheControl::ephemeral(),
+                )],
+            );
         } else {
             builder = builder.message(role, content.to_string());
         }
@@ -228,8 +243,14 @@ async fn conversation_context_caching(client: &Anthropic) -> Result<(), Box<dyn 
 
     let message = client.messages().create(builder.build()).await?;
 
-    println!("Collaborative editing response: {}", extract_text_content(&message.content));
-    println!("Cache read tokens: {:?}", message.usage.cache_read_input_tokens);
+    println!(
+        "Collaborative editing response: {}",
+        extract_text_content(&message.content)
+    );
+    println!(
+        "Cache read tokens: {:?}",
+        message.usage.cache_read_input_tokens
+    );
 
     Ok(())
 }
@@ -252,8 +273,14 @@ async fn large_document_caching(client: &Anthropic) -> Result<(), Box<dyn Error>
             .build()
     ).await?;
 
-    println!("Document analysis: {}", extract_text_content(&analysis.content));
-    println!("Cache creation tokens: {:?}", analysis.usage.cache_creation_input_tokens);
+    println!(
+        "Document analysis: {}",
+        extract_text_content(&analysis.content)
+    );
+    println!(
+        "Cache creation tokens: {:?}",
+        analysis.usage.cache_creation_input_tokens
+    );
 
     // Follow-up request using cached document
     let suggestions = client.messages().create(
@@ -270,15 +297,22 @@ async fn large_document_caching(client: &Anthropic) -> Result<(), Box<dyn Error>
             .build()
     ).await?;
 
-    println!("\nInstallation improvements: {}", extract_text_content(&suggestions.content));
-    println!("Cache read tokens: {:?}", suggestions.usage.cache_read_input_tokens);
+    println!(
+        "\nInstallation improvements: {}",
+        extract_text_content(&suggestions.content)
+    );
+    println!(
+        "Cache read tokens: {:?}",
+        suggestions.usage.cache_read_input_tokens
+    );
 
     Ok(())
 }
 
 /// Helper function to extract text content from message content blocks
 fn extract_text_content(content: &[anthropic_sdk::types::ContentBlock]) -> String {
-    content.iter()
+    content
+        .iter()
         .filter_map(|block| match block {
             anthropic_sdk::types::ContentBlock::Text { text } => Some(text.clone()),
             _ => None,

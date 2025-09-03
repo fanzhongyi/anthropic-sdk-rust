@@ -1,17 +1,20 @@
 use anthropic_sdk::{
-    Tool, ToolRegistry, ToolFunction, ToolResult, ToolUse,
-    TokenCounter, api_retry,
+    api_retry, TokenCounter, Tool, ToolFunction, ToolRegistry, ToolResult, ToolUse,
 };
-use serde_json::{json, Value};
 use async_trait::async_trait;
+use serde_json::{json, Value};
 
 /// Weather tool that simulates fetching weather data
 struct WeatherTool;
 
 #[async_trait]
 impl ToolFunction for WeatherTool {
-    async fn execute(&self, parameters: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
-        let location = parameters.get("location")
+    async fn execute(
+        &self,
+        parameters: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        let location = parameters
+            .get("location")
             .and_then(|v| v.as_str())
             .ok_or("Missing location parameter")?;
 
@@ -29,7 +32,7 @@ impl ToolFunction for WeatherTool {
                     "wind_speed": "8 mph",
                     "forecast": "Mild and pleasant with some afternoon fog"
                 })
-            },
+            }
             l if l.contains("new york") || l.contains("nyc") => {
                 json!({
                     "location": "New York, NY",
@@ -39,7 +42,7 @@ impl ToolFunction for WeatherTool {
                     "wind_speed": "12 mph",
                     "forecast": "Clear skies with comfortable temperatures"
                 })
-            },
+            }
             l if l.contains("london") => {
                 json!({
                     "location": "London, UK",
@@ -49,7 +52,7 @@ impl ToolFunction for WeatherTool {
                     "wind_speed": "6 mph",
                     "forecast": "Typical London weather with light drizzle expected"
                 })
-            },
+            }
             _ => {
                 json!({
                     "location": location,
@@ -71,13 +74,17 @@ struct CalculatorTool;
 
 #[async_trait]
 impl ToolFunction for CalculatorTool {
-    async fn execute(&self, parameters: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
-        let expression = parameters.get("expression")
+    async fn execute(
+        &self,
+        parameters: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        let expression = parameters
+            .get("expression")
             .and_then(|v| v.as_str())
             .ok_or("Missing expression parameter")?;
 
         // Simple expression evaluator (in production, use a proper parser)
-        let result = match self.evaluate_expression(expression) {
+        let result = match Self::evaluate_expression(expression) {
             Ok(value) => value,
             Err(e) => return Err(format!("Calculation error: {e}").into()),
         };
@@ -92,7 +99,7 @@ impl ToolFunction for CalculatorTool {
 }
 
 impl CalculatorTool {
-    fn evaluate_expression(&self, expr: &str) -> Result<f64, String> {
+    fn evaluate_expression(expr: &str) -> Result<f64, String> {
         // Simple evaluator for demo - handles basic arithmetic
         let expr = expr.replace(" ", "");
 
@@ -104,32 +111,32 @@ impl CalculatorTool {
         if let Some(pos) = expr.find('+') {
             let (left, right) = expr.split_at(pos);
             let right = &right[1..]; // Skip the operator
-            let left_val = self.evaluate_expression(left)?;
-            let right_val = self.evaluate_expression(right)?;
+            let left_val = Self::evaluate_expression(left)?;
+            let right_val = Self::evaluate_expression(right)?;
             return Ok(left_val + right_val);
         }
 
         if let Some(pos) = expr.find('-') {
             let (left, right) = expr.split_at(pos);
             let right = &right[1..];
-            let left_val = self.evaluate_expression(left)?;
-            let right_val = self.evaluate_expression(right)?;
+            let left_val = Self::evaluate_expression(left)?;
+            let right_val = Self::evaluate_expression(right)?;
             return Ok(left_val - right_val);
         }
 
         if let Some(pos) = expr.find('*') {
             let (left, right) = expr.split_at(pos);
             let right = &right[1..];
-            let left_val = self.evaluate_expression(left)?;
-            let right_val = self.evaluate_expression(right)?;
+            let left_val = Self::evaluate_expression(left)?;
+            let right_val = Self::evaluate_expression(right)?;
             return Ok(left_val * right_val);
         }
 
         if let Some(pos) = expr.find('/') {
             let (left, right) = expr.split_at(pos);
             let right = &right[1..];
-            let left_val = self.evaluate_expression(left)?;
-            let right_val = self.evaluate_expression(right)?;
+            let left_val = Self::evaluate_expression(left)?;
+            let right_val = Self::evaluate_expression(right)?;
             if right_val == 0.0 {
                 return Err("Division by zero".to_string());
             }
@@ -145,8 +152,12 @@ struct TimeTool;
 
 #[async_trait]
 impl ToolFunction for TimeTool {
-    async fn execute(&self, parameters: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
-        let timezone = parameters.get("timezone")
+    async fn execute(
+        &self,
+        parameters: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        let timezone = parameters
+            .get("timezone")
             .and_then(|v| v.as_str())
             .unwrap_or("UTC");
 
@@ -155,7 +166,8 @@ impl ToolFunction for TimeTool {
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs();
 
-        let formatted_time = format!("2024-01-15 {:02}:{:02}:{:02}",
+        let formatted_time = format!(
+            "2024-01-15 {:02}:{:02}:{:02}",
             (current_time / 3600) % 24,
             (current_time / 60) % 60,
             current_time % 60
@@ -184,16 +196,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut registry = ToolRegistry::new();
 
     // Register weather tool
-    let weather_tool = Tool::new("get_weather", "Get current weather information for a location")
-        .parameter("location", "string", "The city and state/country, e.g. 'San Francisco, CA' or 'London, UK'")
-        .required("location")
-        .build();
+    let weather_tool = Tool::new(
+        "get_weather",
+        "Get current weather information for a location",
+    )
+    .parameter(
+        "location",
+        "string",
+        "The city and state/country, e.g. 'San Francisco, CA' or 'London, UK'",
+    )
+    .required("location")
+    .build();
 
     registry.register("get_weather", weather_tool, Box::new(WeatherTool))?;
 
     // Register calculator tool
     let calculator_tool = Tool::new("calculate", "Perform mathematical calculations")
-        .parameter("expression", "string", "Mathematical expression to evaluate, e.g. '25 + 17' or '100 / 4'")
+        .parameter(
+            "expression",
+            "string",
+            "Mathematical expression to evaluate, e.g. '25 + 17' or '100 / 4'",
+        )
         .required("expression")
         .build();
 
@@ -201,7 +224,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Register time tool
     let time_tool = Tool::new("get_time", "Get current time information")
-        .parameter("timezone", "string", "Timezone to get time for (optional, defaults to UTC)")
+        .parameter(
+            "timezone",
+            "string",
+            "Timezone to get time for (optional, defaults to UTC)",
+        )
         .build();
 
     registry.register("get_time", time_tool, Box::new(TimeTool))?;
@@ -277,7 +304,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     match registry.execute(&error_use).await {
-        Ok(result) => println!("Unexpected success: {}", serde_json::to_string_pretty(&result)?),
+        Ok(result) => println!(
+            "Unexpected success: {}",
+            serde_json::to_string_pretty(&result)?
+        ),
         Err(e) => println!("Expected error handled: {e}"),
     }
 
@@ -286,10 +316,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("======================");
 
     let usage_summary = token_counter.get_summary();
-    println!("Token Usage: {} total tokens tracked", usage_summary.total_tokens);
-    println!("Session Duration: {:.1} seconds", usage_summary.session_duration.as_secs_f64());
+    println!(
+        "Token Usage: {} total tokens tracked",
+        usage_summary.total_tokens
+    );
+    println!(
+        "Session Duration: {:.1} seconds",
+        usage_summary.session_duration.as_secs_f64()
+    );
 
-    println!("Retry Policy: {} max retries, {}ms initial delay",
+    println!(
+        "Retry Policy: {} max retries, {}ms initial delay",
         retry_executor.get_policy().max_retries,
         retry_executor.get_policy().initial_delay.as_millis()
     );
