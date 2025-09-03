@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use crate::types::shared::{RequestId, Usage};
 use crate::files::{File, FileError};
+use crate::types::shared::{RequestId, Usage};
+use serde::{Deserialize, Serialize};
 
 /// A message from Claude
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -115,15 +115,10 @@ pub enum ContentBlock {
 #[serde(tag = "type")]
 pub enum ImageSource {
     #[serde(rename = "base64")]
-    Base64 {
-        media_type: String,
-        data: String,
-    },
+    Base64 { media_type: String, data: String },
 
     #[serde(rename = "url")]
-    Url {
-        url: String,
-    },
+    Url { url: String },
 }
 
 /// Reasons why the model stopped generating
@@ -225,7 +220,10 @@ impl SystemContentBlock {
     }
 
     /// Create a new system text block with cache control
-    pub fn text_with_cache(text: impl Into<String>, cache_control: crate::types::shared::CacheControl) -> Self {
+    pub fn text_with_cache(
+        text: impl Into<String>,
+        cache_control: crate::types::shared::CacheControl,
+    ) -> Self {
         Self {
             block_type: "text".to_string(),
             text: text.into(),
@@ -508,7 +506,10 @@ impl ContentBlockParam {
     }
 
     /// Create a text content block with cache control
-    pub fn text_with_cache(text: impl Into<String>, cache_control: crate::types::shared::CacheControl) -> Self {
+    pub fn text_with_cache(
+        text: impl Into<String>,
+        cache_control: crate::types::shared::CacheControl,
+    ) -> Self {
         Self::Text {
             text: text.into(),
             cache_control: Some(cache_control),
@@ -530,7 +531,7 @@ impl ContentBlockParam {
     pub fn image_base64_with_cache(
         media_type: impl Into<String>,
         data: impl Into<String>,
-        cache_control: crate::types::shared::CacheControl
+        cache_control: crate::types::shared::CacheControl,
     ) -> Self {
         Self::Image {
             source: ImageSource::Base64 {
@@ -544,19 +545,18 @@ impl ContentBlockParam {
     /// Create an image content block from URL
     pub fn image_url(url: impl Into<String>) -> Self {
         Self::Image {
-            source: ImageSource::Url {
-                url: url.into(),
-            },
+            source: ImageSource::Url { url: url.into() },
             cache_control: None,
         }
     }
 
     /// Create an image content block from URL with cache control
-    pub fn image_url_with_cache(url: impl Into<String>, cache_control: crate::types::shared::CacheControl) -> Self {
+    pub fn image_url_with_cache(
+        url: impl Into<String>,
+        cache_control: crate::types::shared::CacheControl,
+    ) -> Self {
         Self::Image {
-            source: ImageSource::Url {
-                url: url.into(),
-            },
+            source: ImageSource::Url { url: url.into() },
             cache_control: Some(cache_control),
         }
     }
@@ -581,7 +581,10 @@ impl ContentBlockParam {
     }
 
     /// Create an image content block from a File with cache control
-    pub async fn image_file_with_cache(file: File, cache_control: crate::types::shared::CacheControl) -> Result<Self, FileError> {
+    pub async fn image_file_with_cache(
+        file: File,
+        cache_control: crate::types::shared::CacheControl,
+    ) -> Result<Self, FileError> {
         if !file.is_image() {
             return Err(FileError::InvalidMimeType {
                 mime_type: file.mime_type.to_string(),
@@ -617,7 +620,7 @@ impl ContentBlockParam {
     pub fn thinking_with_cache(
         thinking: impl Into<String>,
         signature: impl Into<String>,
-        cache_control: crate::types::shared::CacheControl
+        cache_control: crate::types::shared::CacheControl,
     ) -> Self {
         Self::Thinking {
             thinking: thinking.into(),
@@ -637,7 +640,7 @@ impl ContentBlockParam {
     /// Create a redacted thinking content block with cache control
     pub fn redacted_thinking_with_cache(
         data: impl Into<String>,
-        cache_control: crate::types::shared::CacheControl
+        cache_control: crate::types::shared::CacheControl,
     ) -> Self {
         Self::RedactedThinking {
             data: data.into(),
@@ -681,7 +684,7 @@ mod tests {
                 ImageSource::Base64 { media_type, data } => {
                     assert_eq!(media_type, "image/jpeg");
                     assert_eq!(data, "base64data");
-                },
+                }
                 _ => panic!("Expected base64 image source"),
             },
             _ => panic!("Expected image block"),

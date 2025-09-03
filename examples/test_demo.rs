@@ -7,15 +7,11 @@
 //! export ANTHROPIC_API_KEY=your_api_key_here
 
 use anthropic_sdk::{
-    Anthropic,
     types::{
-        MessageCreateBuilder,
-        SystemContentBlock,
-        ContentBlockParam,
-        CacheControl,
+        CacheControl, ContentBlock, ContentBlockParam, MessageCreateBuilder, SystemContentBlock,
         ThinkingConfig,
-        ContentBlock
-    }
+    },
+    Anthropic,
 };
 use std::error::Error;
 
@@ -31,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Ok(client) => {
             println!("✅ Client initialized successfully");
             client
-        },
+        }
         Err(e) => {
             eprintln!("❌ Failed to initialize client: {e}");
             eprintln!("💡 Make sure to set ANTHROPIC_API_KEY environment variable");
@@ -85,7 +81,10 @@ async fn test_basic_thinking(client: &Anthropic) -> Result<(), Box<dyn Error>> {
 
     for block in &message.content {
         match block {
-            ContentBlock::Thinking { thinking, signature } => {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
                 found_thinking = true;
                 println!("🧠 Found thinking content ({} chars)", thinking.len());
                 println!("🔐 Signature: {}...", &signature[..20.min(signature.len())]);
@@ -96,13 +95,19 @@ async fn test_basic_thinking(client: &Anthropic) -> Result<(), Box<dyn Error>> {
                     println!("   💭 {line}");
                 }
                 if thinking.lines().count() > 3 {
-                    println!("   💭 ... (and {} more lines)", thinking.lines().count() - 3);
+                    println!(
+                        "   💭 ... (and {} more lines)",
+                        thinking.lines().count() - 3
+                    );
                 }
-            },
+            }
             ContentBlock::Text { text } => {
                 found_text = true;
-                println!("📝 Final answer: {}", text.chars().take(100).collect::<String>() + "...");
-            },
+                println!(
+                    "📝 Final answer: {}",
+                    text.chars().take(100).collect::<String>() + "..."
+                );
+            }
             _ => {}
         }
     }
@@ -149,41 +154,55 @@ Provide detailed, actionable recommendations with specific examples.
 
     // First request - should create cache
     println!("📤 Making first request (should create cache)...");
-    let message1 = client.messages().create(
-        MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 512)
-            .system(vec![
-                SystemContentBlock::text_with_cache(
+    let message1 = client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 512)
+                .system(vec![SystemContentBlock::text_with_cache(
                     large_system_prompt,
-                    CacheControl::ephemeral_5m()
-                )
-            ])
-            .user("What's the most important principle in system design?")
-            .build()
-    ).await?;
+                    CacheControl::ephemeral_5m(),
+                )])
+                .user("What's the most important principle in system design?")
+                .build(),
+        )
+        .await?;
 
     println!("📊 First request usage:");
     println!("  Input tokens: {}", message1.usage.input_tokens);
-    println!("  Cache creation tokens: {:?}", message1.usage.cache_creation_input_tokens);
-    println!("  Cache read tokens: {:?}", message1.usage.cache_read_input_tokens);
+    println!(
+        "  Cache creation tokens: {:?}",
+        message1.usage.cache_creation_input_tokens
+    );
+    println!(
+        "  Cache read tokens: {:?}",
+        message1.usage.cache_read_input_tokens
+    );
 
     // Second request - should use cache
     println!("📤 Making second request (should use cache)...");
-    let message2 = client.messages().create(
-        MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 512)
-            .system(vec![
-                SystemContentBlock::text_with_cache(
+    let message2 = client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 512)
+                .system(vec![SystemContentBlock::text_with_cache(
                     large_system_prompt,
-                    CacheControl::ephemeral_5m()
-                )
-            ])
-            .user("How do you ensure high availability in distributed systems?")
-            .build()
-    ).await?;
+                    CacheControl::ephemeral_5m(),
+                )])
+                .user("How do you ensure high availability in distributed systems?")
+                .build(),
+        )
+        .await?;
 
     println!("📊 Second request usage:");
     println!("  Input tokens: {}", message2.usage.input_tokens);
-    println!("  Cache creation tokens: {:?}", message2.usage.cache_creation_input_tokens);
-    println!("  Cache read tokens: {:?}", message2.usage.cache_read_input_tokens);
+    println!(
+        "  Cache creation tokens: {:?}",
+        message2.usage.cache_creation_input_tokens
+    );
+    println!(
+        "  Cache read tokens: {:?}",
+        message2.usage.cache_read_input_tokens
+    );
 
     // Verify caching worked
     if message1.usage.cache_creation_input_tokens.is_some() {
@@ -251,9 +270,15 @@ Challenges:
     ).await?;
 
     println!("📊 Combined features usage:");
-    println!("  Total input tokens: {}", message.usage.total_input_tokens());
+    println!(
+        "  Total input tokens: {}",
+        message.usage.total_input_tokens()
+    );
     println!("  Output tokens: {}", message.usage.output_tokens);
-    println!("  Cache creation: {:?}", message.usage.cache_creation_input_tokens);
+    println!(
+        "  Cache creation: {:?}",
+        message.usage.cache_creation_input_tokens
+    );
     println!("  Cache read: {:?}", message.usage.cache_read_input_tokens);
 
     // Analyze response
@@ -265,11 +290,11 @@ Challenges:
             ContentBlock::Thinking { thinking, .. } => {
                 has_thinking = true;
                 println!("🧠 Thinking detected ({} chars)", thinking.len());
-            },
+            }
             ContentBlock::Text { text } => {
                 has_text = true;
                 println!("📝 Response length: {} chars", text.len());
-            },
+            }
             _ => {}
         }
     }
@@ -289,4 +314,3 @@ Challenges:
 
     Ok(())
 }
-

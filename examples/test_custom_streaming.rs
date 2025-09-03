@@ -1,13 +1,16 @@
-use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder, MessageStreamEvent, ContentBlockDelta};
 use anthropic_sdk::types::ContentBlock;
-use std::time::Duration;
-use std::io::{self, Write};
+use anthropic_sdk::{
+    Anthropic, ClientConfig, ContentBlockDelta, MessageCreateBuilder, MessageStreamEvent,
+};
 use futures::StreamExt;
 use std::env;
+use std::io::{self, Write};
+use std::time::Duration;
 
 // Helper function to extract text content from response
 fn extract_text_from_content(content: &[ContentBlock]) -> String {
-    content.iter()
+    content
+        .iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text.as_str()),
             _ => None,
@@ -25,8 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|_| env::var("ANTHROPIC_API_KEY"))
         .expect("⚠️  No API key found. Please set CUSTOM_BEARER_TOKEN or ANTHROPIC_API_KEY");
 
-    let base_url = env::var("CUSTOM_BASE_URL")
-        .expect("⚠️  No base URL found. Please set CUSTOM_BASE_URL");
+    let base_url =
+        env::var("CUSTOM_BASE_URL").expect("⚠️  No base URL found. Please set CUSTOM_BASE_URL");
 
     // Custom configuration for custom gateway
     let config = ClientConfig::new(&api_key)
@@ -43,7 +46,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧪 Test 1: Callback-based streaming...");
 
     if api_key != "dummy-key" {
-        match client.messages()
+        match client
+            .messages()
             .create_with_builder("claude-3-haiku@20240307", 200)
             .user("Write a short haiku about programming")
             .temperature(0.8)
@@ -68,9 +72,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .final_message()
                     .await?;
 
-                println!("📊 Usage: {} input, {} output tokens",
-                    final_message.usage.input_tokens,
-                    final_message.usage.output_tokens);
+                println!(
+                    "📊 Usage: {} input, {} output tokens",
+                    final_message.usage.input_tokens, final_message.usage.output_tokens
+                );
             }
             Err(e) => {
                 println!("❌ Streaming test FAILED!");
@@ -105,12 +110,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         MessageStreamEvent::ContentBlockStart { index, .. } => {
                             println!("📝 Content block {index} started");
                         }
-                        MessageStreamEvent::ContentBlockDelta { delta, .. } => {
-                            if let ContentBlockDelta::TextDelta { text } = delta {
-                                print!("{text}");
-                                content.push_str(&text);
-                                io::stdout().flush().unwrap();
-                            }
+                        MessageStreamEvent::ContentBlockDelta {
+                            delta: ContentBlockDelta::TextDelta { text },
+                            ..
+                        } => {
+                            print!("{text}");
+                            content.push_str(&text);
+                            io::stdout().flush().unwrap();
                         }
                         MessageStreamEvent::MessageDelta { usage, .. } => {
                             println!("\n📊 Usage: {} output tokens", usage.output_tokens);
@@ -136,11 +142,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 3: Regular message (for comparison)
     println!("\n🧪 Test 3: Regular message (non-streaming)...");
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new("claude-3-haiku@20240307", 100)
                 .user("Hello! Just say 'SDK configured correctly'")
-                .build()
+                .build(),
         )
         .await;
 

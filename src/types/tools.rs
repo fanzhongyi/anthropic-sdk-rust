@@ -40,13 +40,13 @@ use serde_json::{Map, Value};
 pub struct Tool {
     /// The name of the tool. Must be unique within the request.
     pub name: String,
-    
+
     /// A detailed description of what the tool does.
     pub description: String,
-    
+
     /// JSON schema definition for the tool's input parameters.
     pub input_schema: ToolInputSchema,
-    
+
     /// Optional cache control for prompt caching
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<crate::types::shared::CacheControl>,
@@ -60,14 +60,14 @@ pub struct ToolInputSchema {
     /// The schema type (always "object" for tool inputs).
     #[serde(rename = "type")]
     pub schema_type: String,
-    
+
     /// Property definitions for the input parameters.
     pub properties: Map<String, Value>,
-    
+
     /// List of required parameter names.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub required: Vec<String>,
-    
+
     /// Additional schema properties.
     #[serde(flatten)]
     pub additional: Map<String, Value>,
@@ -82,11 +82,11 @@ pub enum ToolChoice {
     /// Let Claude automatically decide whether and which tools to use.
     #[serde(rename = "auto")]
     Auto,
-    
+
     /// Claude must use one of the available tools.
     #[serde(rename = "any")]
     Any,
-    
+
     /// Force Claude to use a specific tool.
     #[serde(rename = "tool")]
     Tool {
@@ -103,10 +103,10 @@ pub enum ToolChoice {
 pub struct ToolUse {
     /// Unique identifier for this tool use request.
     pub id: String,
-    
+
     /// The name of the tool to call.
     pub name: String,
-    
+
     /// Input parameters for the tool call.
     pub input: Value,
 }
@@ -119,10 +119,10 @@ pub struct ToolUse {
 pub struct ToolResult {
     /// The ID of the tool use request this result corresponds to.
     pub tool_use_id: String,
-    
+
     /// The result content from the tool execution.
     pub content: ToolResultContent,
-    
+
     /// Whether the tool execution was successful.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
@@ -134,10 +134,10 @@ pub struct ToolResult {
 pub enum ToolResultContent {
     /// Simple text result.
     Text(String),
-    
+
     /// Structured JSON result.
     Json(Value),
-    
+
     /// Multiple content blocks (text, images, etc.).
     Blocks(Vec<ToolResultBlock>),
 }
@@ -152,7 +152,7 @@ pub enum ToolResultBlock {
         /// The text content.
         text: String,
     },
-    
+
     /// Image content block.
     #[serde(rename = "image")]
     Image {
@@ -200,14 +200,19 @@ impl ToolBuilder {
             cache_control: None,
         }
     }
-    
+
     /// Add a parameter to the tool.
     ///
     /// # Arguments
     /// * `name` - Parameter name
     /// * `param_type` - Parameter type (e.g., "string", "number", "boolean")
     /// * `description` - Parameter description
-    pub fn parameter(mut self, name: impl Into<String>, param_type: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn parameter(
+        mut self,
+        name: impl Into<String>,
+        param_type: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         let param_name = name.into();
         let param_schema = serde_json::json!({
             "type": param_type.into(),
@@ -216,9 +221,14 @@ impl ToolBuilder {
         self.properties.insert(param_name, param_schema);
         self
     }
-    
+
     /// Add an enum parameter with specific allowed values.
-    pub fn enum_parameter(mut self, name: impl Into<String>, description: impl Into<String>, values: Vec<String>) -> Self {
+    pub fn enum_parameter(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        values: Vec<String>,
+    ) -> Self {
         let param_name = name.into();
         let param_schema = serde_json::json!({
             "type": "string",
@@ -228,9 +238,14 @@ impl ToolBuilder {
         self.properties.insert(param_name, param_schema);
         self
     }
-    
+
     /// Add an array parameter.
-    pub fn array_parameter(mut self, name: impl Into<String>, description: impl Into<String>, item_type: impl Into<String>) -> Self {
+    pub fn array_parameter(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        item_type: impl Into<String>,
+    ) -> Self {
         let param_name = name.into();
         let param_schema = serde_json::json!({
             "type": "array",
@@ -242,9 +257,14 @@ impl ToolBuilder {
         self.properties.insert(param_name, param_schema);
         self
     }
-    
+
     /// Add an object parameter with nested properties.
-    pub fn object_parameter(mut self, name: impl Into<String>, description: impl Into<String>, properties: Map<String, Value>) -> Self {
+    pub fn object_parameter(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        properties: Map<String, Value>,
+    ) -> Self {
         let param_name = name.into();
         let param_schema = serde_json::json!({
             "type": "object",
@@ -254,7 +274,7 @@ impl ToolBuilder {
         self.properties.insert(param_name, param_schema);
         self
     }
-    
+
     /// Mark a parameter as required.
     pub fn required(mut self, name: impl Into<String>) -> Self {
         let param_name = name.into();
@@ -263,19 +283,19 @@ impl ToolBuilder {
         }
         self
     }
-    
+
     /// Add additional schema properties.
     pub fn additional_property(mut self, key: impl Into<String>, value: Value) -> Self {
         self.additional.insert(key.into(), value);
         self
     }
-    
+
     /// Set cache control for prompt caching.
     pub fn cache_control(mut self, cache_control: crate::types::shared::CacheControl) -> Self {
         self.cache_control = Some(cache_control);
         self
     }
-    
+
     /// Build the tool definition.
     pub fn build(self) -> Tool {
         Tool {
@@ -304,12 +324,13 @@ impl Tool {
             cache_control: None,
         }
     }
-    
+
     /// Create a tool builder with name and description.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> ToolBuilder {
         ToolBuilder::new(name, description)
     }
-    
+
     /// Validate if the given input matches this tool's schema.
     pub fn validate_input(&self, input: &Value) -> Result<(), ToolValidationError> {
         // Basic validation - check required fields
@@ -322,14 +343,14 @@ impl Tool {
                     });
                 }
             }
-            
+
             // Check field types
             for (field_name, field_value) in input_obj {
                 if let Some(property_schema) = self.input_schema.properties.get(field_name) {
                     self.validate_field_type(field_name, field_value, property_schema)?;
                 }
             }
-            
+
             Ok(())
         } else {
             Err(ToolValidationError::InvalidInputType {
@@ -339,8 +360,13 @@ impl Tool {
             })
         }
     }
-    
-    fn validate_field_type(&self, field_name: &str, value: &Value, schema: &Value) -> Result<(), ToolValidationError> {
+
+    fn validate_field_type(
+        &self,
+        field_name: &str,
+        value: &Value,
+        schema: &Value,
+    ) -> Result<(), ToolValidationError> {
         if let Some(expected_type) = schema.get("type").and_then(|t| t.as_str()) {
             let actual_type = match value {
                 Value::Null => "null",
@@ -350,7 +376,7 @@ impl Tool {
                 Value::Array(_) => "array",
                 Value::Object(_) => "object",
             };
-            
+
             if expected_type != actual_type {
                 return Err(ToolValidationError::InvalidFieldType {
                     field: field_name.to_string(),
@@ -360,7 +386,7 @@ impl Tool {
                 });
             }
         }
-        
+
         Ok(())
     }
 }
@@ -370,12 +396,12 @@ impl ToolChoice {
     pub fn auto() -> Self {
         Self::Auto
     }
-    
+
     /// Create an any tool choice.
     pub fn any() -> Self {
         Self::Any
     }
-    
+
     /// Create a specific tool choice.
     pub fn tool(name: impl Into<String>) -> Self {
         Self::Tool { name: name.into() }
@@ -391,7 +417,7 @@ impl ToolResult {
             is_error: Some(false),
         }
     }
-    
+
     /// Create a successful tool result with JSON content.
     pub fn success_json(tool_use_id: impl Into<String>, content: Value) -> Self {
         Self {
@@ -400,7 +426,7 @@ impl ToolResult {
             is_error: Some(false),
         }
     }
-    
+
     /// Create an error tool result.
     pub fn error(tool_use_id: impl Into<String>, error_message: impl Into<String>) -> Self {
         Self {
@@ -409,7 +435,7 @@ impl ToolResult {
             is_error: Some(true),
         }
     }
-    
+
     /// Create a tool result with multiple content blocks.
     pub fn with_blocks(tool_use_id: impl Into<String>, blocks: Vec<ToolResultBlock>) -> Self {
         Self {
@@ -425,7 +451,7 @@ impl ToolResultBlock {
     pub fn text(text: impl Into<String>) -> Self {
         Self::Text { text: text.into() }
     }
-    
+
     /// Create an image content block from base64 data.
     pub fn image_base64(media_type: impl Into<String>, data: impl Into<String>) -> Self {
         Self::Image {
@@ -443,14 +469,25 @@ pub enum ToolValidationError {
     /// A required field is missing from the input.
     #[error("Missing required field '{field}' for tool '{tool}'")]
     MissingRequiredField { field: String, tool: String },
-    
+
     /// Invalid input type (expected object).
     #[error("Invalid input type for tool '{tool}': expected {expected}, got {actual}")]
-    InvalidInputType { expected: String, actual: String, tool: String },
-    
+    InvalidInputType {
+        expected: String,
+        actual: String,
+        tool: String,
+    },
+
     /// Invalid field type.
-    #[error("Invalid type for field '{field}' in tool '{tool}': expected {expected}, got {actual}")]
-    InvalidFieldType { field: String, expected: String, actual: String, tool: String },
+    #[error(
+        "Invalid type for field '{field}' in tool '{tool}': expected {expected}, got {actual}"
+    )]
+    InvalidFieldType {
+        field: String,
+        expected: String,
+        actual: String,
+        tool: String,
+    },
 }
 
 /// Server-side tools provided by Anthropic.
@@ -475,11 +512,11 @@ pub struct WebSearchParameters {
     /// Maximum number of search results to return.
     #[serde(skip_serializing_if = "Option::is_none")]
     max_results: Option<u32>,
-    
+
     /// Search language preference.
     #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<String>,
-    
+
     /// Geographic region for search results.
     #[serde(skip_serializing_if = "Option::is_none")]
     region: Option<String>,
@@ -490,10 +527,12 @@ impl ServerTool {
     pub fn web_search() -> Self {
         Self::WebSearch { parameters: None }
     }
-    
+
     /// Create a web search tool with custom parameters.
     pub fn web_search_with_params(parameters: WebSearchParameters) -> Self {
-        Self::WebSearch { parameters: Some(parameters) }
+        Self::WebSearch {
+            parameters: Some(parameters),
+        }
     }
 }
 
@@ -506,13 +545,13 @@ impl WebSearchParameters {
             region: None,
         }
     }
-    
+
     /// Set the search language.
     pub fn language(mut self, language: impl Into<String>) -> Self {
         self.language = Some(language.into());
         self
     }
-    
+
     /// Set the search region.
     pub fn region(mut self, region: impl Into<String>) -> Self {
         self.region = Some(region.into());
@@ -530,7 +569,11 @@ mod tests {
         let tool = Tool::new("get_weather", "Get the current weather")
             .parameter("location", "string", "The location to get weather for")
             .parameter("unit", "string", "Temperature unit")
-            .enum_parameter("format", "Response format", vec!["json".to_string(), "text".to_string()])
+            .enum_parameter(
+                "format",
+                "Response format",
+                vec!["json".to_string(), "text".to_string()],
+            )
             .required("location")
             .build();
 
@@ -600,14 +643,20 @@ mod tests {
     #[test]
     fn test_server_tool_creation() {
         let web_search = ServerTool::web_search();
-        assert!(matches!(web_search, ServerTool::WebSearch { parameters: None }));
+        assert!(matches!(
+            web_search,
+            ServerTool::WebSearch { parameters: None }
+        ));
 
         let params = WebSearchParameters::with_max_results(10)
             .language("en")
             .region("US");
         let web_search_with_params = ServerTool::web_search_with_params(params);
-        
-        if let ServerTool::WebSearch { parameters: Some(p) } = web_search_with_params {
+
+        if let ServerTool::WebSearch {
+            parameters: Some(p),
+        } = web_search_with_params
+        {
             assert_eq!(p.max_results, Some(10));
             assert_eq!(p.language, Some("en".to_string()));
             assert_eq!(p.region, Some("US".to_string()));
@@ -619,7 +668,11 @@ mod tests {
     #[test]
     fn test_tool_serialization() {
         let tool = Tool::new("calculate", "Perform mathematical calculations")
-            .parameter("expression", "string", "Mathematical expression to evaluate")
+            .parameter(
+                "expression",
+                "string",
+                "Mathematical expression to evaluate",
+            )
             .required("expression")
             .build();
 
@@ -646,4 +699,4 @@ mod tests {
         assert_eq!(tool_use.input["location"], "San Francisco, CA");
         assert_eq!(tool_use.input["unit"], "celsius");
     }
-} 
+}

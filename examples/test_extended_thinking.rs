@@ -6,12 +6,8 @@
 //! thoughtful and well-reasoned answers.
 
 use anthropic_sdk::{
+    types::{ContentBlock, MessageCreateBuilder, ThinkingConfig},
     Anthropic,
-    types::{
-        MessageCreateBuilder,
-        ThinkingConfig,
-        ContentBlock
-    }
 };
 use futures::StreamExt;
 use std::error::Error;
@@ -46,50 +42,65 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 /// Demonstrates basic extended thinking for mathematical problem solving
 async fn basic_extended_thinking(client: &Anthropic) -> Result<(), Box<dyn Error>> {
-    let message = client.messages().create(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 8192)
-            .thinking(2048) // thinking tokens must be less than max_tokens
-            .system("You are a mathematics tutor. Show your reasoning process clearly.")
-            .user(r#"
+    let message = client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 8192)
+                .thinking(2048) // thinking tokens must be less than max_tokens
+                .system("You are a mathematics tutor. Show your reasoning process clearly.")
+                .user(
+                    r#"
 A company has 120 employees. Due to budget constraints, they need to reduce their workforce by 15%.
 However, they also plan to hire 8 new employees in specialized roles.
 After these changes, they want to give all remaining employees a bonus.
 If the total bonus budget is $50,000, how much bonus will each employee receive?
 Please show your step-by-step reasoning.
-"#)
-            .build()
-    ).await?;
+"#,
+                )
+                .build(),
+        )
+        .await?;
 
     println!("=== Response ===");
     for block in &message.content {
         match block {
-            ContentBlock::Thinking { thinking, signature } => {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
                 println!("🤔 Thinking process:");
                 println!("{thinking}");
                 println!("Signature: {signature}");
                 println!();
-            },
+            }
             ContentBlock::Text { text } => {
                 println!("📝 Final answer:");
                 println!("{text}");
-            },
+            }
             _ => {}
         }
     }
 
-    println!("Usage - Input tokens: {}, Output tokens: {}",
-             message.usage.input_tokens, message.usage.output_tokens);
+    println!(
+        "Usage - Input tokens: {}, Output tokens: {}",
+        message.usage.input_tokens, message.usage.output_tokens
+    );
 
     Ok(())
 }
 
 /// Demonstrates streaming extended thinking for real-time reasoning display
 async fn streaming_extended_thinking(client: &Anthropic) -> Result<(), Box<dyn Error>> {
-    let stream = client.messages().create_stream(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 3000)
-            .thinking(2000) // thinking tokens must be less than max_tokens
-            .system("You are an expert system architect. Think through problems systematically.")
-            .user(r#"
+    let stream = client
+        .messages()
+        .create_stream(
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 3000)
+                .thinking(2000) // thinking tokens must be less than max_tokens
+                .system(
+                    "You are an expert system architect. Think through problems systematically.",
+                )
+                .user(
+                    r#"
 Design a distributed caching system that can handle 1 million requests per second
 with 99.9% availability. Consider:
 - Cache consistency models
@@ -99,10 +110,12 @@ with 99.9% availability. Consider:
 - Geographic distribution
 
 Walk through your design decisions step by step.
-"#)
-            .stream(true)
-            .build()
-    ).await?;
+"#,
+                )
+                .stream(true)
+                .build(),
+        )
+        .await?;
 
     println!("=== Streaming Response ===");
 
@@ -117,22 +130,23 @@ Walk through your design decisions step by step.
             Ok(event) => {
                 use anthropic_sdk::types::streaming::MessageStreamEvent;
                 match event {
-                    MessageStreamEvent::ContentBlockStart { content_block, index: _ } => {
-                        match content_block {
-                            ContentBlock::Thinking { .. } => {
-                                println!("🤔 Starting to think...");
-                                _in_thinking = true;
-                            },
-                            ContentBlock::Text { .. } => {
-                                if !thinking_content.is_empty() {
-                                    println!("\n💭 Thinking complete. Final reasoning:");
-                                    println!("{thinking_content}");
-                                    println!("\n📝 Response:");
-                                }
-                                _in_thinking = false;
-                            },
-                            _ => {}
+                    MessageStreamEvent::ContentBlockStart {
+                        content_block,
+                        index: _,
+                    } => match content_block {
+                        ContentBlock::Thinking { .. } => {
+                            println!("🤔 Starting to think...");
+                            _in_thinking = true;
                         }
+                        ContentBlock::Text { .. } => {
+                            if !thinking_content.is_empty() {
+                                println!("\n💭 Thinking complete. Final reasoning:");
+                                println!("{thinking_content}");
+                                println!("\n📝 Response:");
+                            }
+                            _in_thinking = false;
+                        }
+                        _ => {}
                     },
                     MessageStreamEvent::ContentBlockDelta { delta, index: _ } => {
                         use anthropic_sdk::types::streaming::ContentBlockDelta;
@@ -146,24 +160,24 @@ Walk through your design decisions step by step.
                                     println!(" (thinking...)");
                                     io::stdout().flush().unwrap();
                                 }
-                            },
+                            }
                             ContentBlockDelta::TextDelta { text } => {
                                 response_content.push_str(&text);
                                 print!("{text}");
                                 io::stdout().flush().unwrap(); // Ensure immediate output
-                            },
+                            }
                             _ => {
                                 println!("🔍 Unknown delta type: {delta:?}");
                             }
                         }
-                    },
+                    }
                     MessageStreamEvent::MessageStop => {
                         println!("\n\n=== Stream Complete ===");
                         break;
-                    },
+                    }
                     _ => {}
                 }
-            },
+            }
             Err(e) => {
                 eprintln!("Stream error: {e}");
                 break;
@@ -176,15 +190,20 @@ Walk through your design decisions step by step.
 
 /// Demonstrates extended thinking for complex algorithmic problem solving
 async fn complex_problem_solving(client: &Anthropic) -> Result<(), Box<dyn Error>> {
-    let message = client.messages().create(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 15000)
-            .thinking_config(ThinkingConfig::enabled(10000)) // Use explicit config
-            .system(r#"
+    let message = client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 15000)
+                .thinking_config(ThinkingConfig::enabled(10000)) // Use explicit config
+                .system(
+                    r#"
 You are an expert algorithm designer and computer scientist.
 When solving problems, think through multiple approaches, analyze their trade-offs,
 and choose the best solution with clear reasoning.
-"#)
-            .user(r#"
+"#,
+                )
+                .user(
+                    r#"
 Design an algorithm to find the shortest path between any two nodes in a dynamic graph
 where edges can be added or removed frequently. The graph has the following constraints:
 
@@ -204,24 +223,29 @@ Provide a detailed algorithm design with:
 6. Alternative approaches considered
 
 Include pseudocode for the main operations.
-"#)
-            .build()
-    ).await?;
+"#,
+                )
+                .build(),
+        )
+        .await?;
 
     println!("=== Complex Algorithm Design ===");
 
     for block in message.content.iter() {
         match block {
-            ContentBlock::Thinking { thinking, signature } => {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
                 println!("🧠 Detailed Reasoning Process:");
                 println!("{thinking}");
                 println!("\n🔐 Verification signature: {signature}");
                 println!("\n{}\n", "=".repeat(80));
-            },
+            }
             ContentBlock::Text { text } => {
                 println!("🎯 Final Algorithm Design:");
                 println!("{text}");
-            },
+            }
             _ => {}
         }
     }
@@ -308,7 +332,10 @@ Think through each aspect systematically before providing your review.
 
     for block in &message.content {
         match block {
-            ContentBlock::Thinking { thinking, signature } => {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
                 println!("🔍 Review Analysis Process:");
 
                 // Split thinking into sections for better readability
@@ -322,11 +349,11 @@ Think through each aspect systematically before providing your review.
 
                 println!("🔐 Analysis signature: {signature}");
                 println!("\n{}\n", "=".repeat(80));
-            },
+            }
             ContentBlock::Text { text } => {
                 println!("📋 Final Code Review Report:");
                 println!("{text}");
-            },
+            }
             _ => {}
         }
     }
@@ -342,4 +369,3 @@ Think through each aspect systematically before providing your review.
 
     Ok(())
 }
-

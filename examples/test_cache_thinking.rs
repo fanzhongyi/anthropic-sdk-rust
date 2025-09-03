@@ -4,16 +4,11 @@
 //! extended thinking for optimal performance and reasoning quality.
 
 use anthropic_sdk::{
-    Anthropic,
     types::{
-        MessageCreateBuilder,
-        SystemContentBlock,
-        ContentBlockParam,
-        CacheControl,
-        ThinkingConfig,
-        ContentBlock,
-        Role
-    }
+        CacheControl, ContentBlock, ContentBlockParam, MessageCreateBuilder, Role,
+        SystemContentBlock, ThinkingConfig,
+    },
+    Anthropic,
 };
 use futures::StreamExt;
 use std::error::Error;
@@ -200,7 +195,8 @@ class NotificationService {
                 println!("🧠 Analysis Process:");
                 // Show key thinking points
                 let lines: Vec<&str> = thinking.lines().collect();
-                for (i, line) in lines.iter().take(20).enumerate() { // Show first 20 lines
+                for (i, line) in lines.iter().take(20).enumerate() {
+                    // Show first 20 lines
                     if !line.trim().is_empty() {
                         println!("  {}: {}", i + 1, line);
                     }
@@ -209,19 +205,28 @@ class NotificationService {
                     println!("  ... ({} more lines of analysis)", lines.len() - 20);
                 }
                 println!();
-            },
+            }
             ContentBlock::Text { text } => {
                 println!("📋 Final Analysis Report:");
                 println!("{text}");
-            },
+            }
             _ => {}
         }
     }
 
     println!("\n💾 Performance Metrics:");
-    println!("  Cache creation tokens: {:?}", message.usage.cache_creation_input_tokens);
-    println!("  Cache read tokens: {:?}", message.usage.cache_read_input_tokens);
-    println!("  Total input tokens: {}", message.usage.total_input_tokens());
+    println!(
+        "  Cache creation tokens: {:?}",
+        message.usage.cache_creation_input_tokens
+    );
+    println!(
+        "  Cache read tokens: {:?}",
+        message.usage.cache_read_input_tokens
+    );
+    println!(
+        "  Total input tokens: {}",
+        message.usage.total_input_tokens()
+    );
     println!("  Output tokens: {}", message.usage.output_tokens);
 
     Ok(())
@@ -291,24 +296,28 @@ Current Pain Points:
                         match content_block {
                             ContentBlock::Thinking { .. } => {
                                 println!("🤔 Analyzing requirements and designing solution...");
-                            },
+                            }
                             ContentBlock::Text { .. } => {
                                 if !thinking_complete && !thinking_buffer.is_empty() {
                                     println!("\n💭 Key Design Considerations:");
                                     // Show thinking summary
-                                    let thinking_lines: Vec<&str> = thinking_buffer.lines().collect();
+                                    let thinking_lines: Vec<&str> =
+                                        thinking_buffer.lines().collect();
                                     for line in thinking_lines.iter().take(10) {
-                                        if line.contains("approach") || line.contains("consider") || line.contains("trade-off") {
+                                        if line.contains("approach")
+                                            || line.contains("consider")
+                                            || line.contains("trade-off")
+                                        {
                                             println!("  • {}", line.trim());
                                         }
                                     }
                                     thinking_complete = true;
                                     println!("\n🏗️ Detailed Architecture Design:");
                                 }
-                            },
+                            }
                             _ => {}
                         }
-                    },
+                    }
                     MessageStreamEvent::ContentBlockDelta { delta, .. } => {
                         use anthropic_sdk::types::streaming::ContentBlockDelta;
                         match delta {
@@ -318,28 +327,32 @@ Current Pain Points:
                                 if thinking_buffer.len() % 200 == 0 {
                                     print!(".");
                                 }
-                            },
+                            }
                             ContentBlockDelta::TextDelta { text } => {
                                 response_buffer.push_str(&text);
                                 print!("{text}");
-                            },
+                            }
                             _ => {}
                         }
-                    },
+                    }
                     MessageStreamEvent::MessageDelta { usage, .. } => {
                         // Show real-time usage updates
-                        if usage.cache_read_input_tokens.is_some() || usage.cache_creation_input_tokens.is_some() {
-                            println!("\n📊 Cache Usage - Read: {:?}, Creation: {:?}",
-                                   usage.cache_read_input_tokens, usage.cache_creation_input_tokens);
+                        if usage.cache_read_input_tokens.is_some()
+                            || usage.cache_creation_input_tokens.is_some()
+                        {
+                            println!(
+                                "\n📊 Cache Usage - Read: {:?}, Creation: {:?}",
+                                usage.cache_read_input_tokens, usage.cache_creation_input_tokens
+                            );
                         }
-                    },
+                    }
                     MessageStreamEvent::MessageStop => {
                         println!("\n\n✅ Architecture design complete!");
                         break;
-                    },
+                    }
                     _ => {}
                 }
-            },
+            }
             Err(e) => {
                 eprintln!("Stream error: {e}");
                 break;
@@ -368,46 +381,61 @@ You provide practical, experienced-based advice with specific examples and best 
     println!("=== Multi-turn Conversation with Cached Context ===");
 
     // Turn 1: Initial question with cached context
-    println!("\n👤 User: How do I design a microservices architecture for a large e-commerce platform?");
+    println!(
+        "\n👤 User: How do I design a microservices architecture for a large e-commerce platform?"
+    );
 
-    let response1 = client.messages().create_with_extended_cache(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
-            .thinking(2048)
-            .system(vec![
-                SystemContentBlock::text_with_cache(
+    let response1 = client
+        .messages()
+        .create_with_extended_cache(
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
+                .thinking(2048)
+                .system(vec![SystemContentBlock::text_with_cache(
                     expert_context,
-                    CacheControl::ephemeral()
+                    CacheControl::ephemeral(),
+                )])
+                .user(
+                    "How do I design a microservices architecture for a large e-commerce platform?",
                 )
-            ])
-            .user("How do I design a microservices architecture for a large e-commerce platform?")
-            .build()
-    ).await?;
+                .build(),
+        )
+        .await?;
 
     let response1_text = extract_text_content(&response1.content);
     println!("🤖 Dr. Chen: {response1_text}");
-    println!("💾 Cache creation: {:?} tokens", response1.usage.cache_creation_input_tokens);
+    println!(
+        "💾 Cache creation: {:?} tokens",
+        response1.usage.cache_creation_input_tokens
+    );
 
     // Turn 2: Follow-up question (should use cache)
     println!("\n👤 User: What about data consistency between microservices?");
 
-    let response2 = client.messages().create_with_extended_cache(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
-            .thinking(2048)
-            .system(vec![
-                SystemContentBlock::text_with_cache(
+    let response2 = client
+        .messages()
+        .create_with_extended_cache(
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
+                .thinking(2048)
+                .system(vec![SystemContentBlock::text_with_cache(
                     expert_context,
-                    CacheControl::ephemeral()
+                    CacheControl::ephemeral(),
+                )])
+                .message(
+                    Role::User,
+                    "How do I design a microservices architecture for a large e-commerce platform?",
                 )
-            ])
-            .message(Role::User, "How do I design a microservices architecture for a large e-commerce platform?")
-            .message(Role::Assistant, response1_text.clone())
-            .user("What about data consistency between microservices?")
-            .build()
-    ).await?;
+                .message(Role::Assistant, response1_text.clone())
+                .user("What about data consistency between microservices?")
+                .build(),
+        )
+        .await?;
 
     let response2_text = extract_text_content(&response2.content);
     println!("🤖 Dr. Chen: {response2_text}");
-    println!("💾 Cache read: {:?} tokens", response2.usage.cache_read_input_tokens);
+    println!(
+        "💾 Cache read: {:?} tokens",
+        response2.usage.cache_read_input_tokens
+    );
 
     // Turn 3: Technical deep-dive
     println!("\n👤 User: Can you show me a specific example of implementing the Saga pattern?");
@@ -431,22 +459,32 @@ You provide practical, experienced-based advice with specific examples and best 
 
     let response3_text = extract_text_content(&response3.content);
     println!("🤖 Dr. Chen: {response3_text}");
-    println!("💾 Cache read: {:?} tokens", response3.usage.cache_read_input_tokens);
+    println!(
+        "💾 Cache read: {:?} tokens",
+        response3.usage.cache_read_input_tokens
+    );
 
     // Show total conversation efficiency
-    let total_cache_savings = response2.usage.cache_read_input_tokens.unwrap_or(0) +
-                              response3.usage.cache_read_input_tokens.unwrap_or(0);
+    let total_cache_savings = response2.usage.cache_read_input_tokens.unwrap_or(0)
+        + response3.usage.cache_read_input_tokens.unwrap_or(0);
     println!("\n📈 Conversation Efficiency:");
     println!("  Total cache read tokens: {total_cache_savings}");
-    println!("  Estimated cost savings: ~{:.2}%",
-             (total_cache_savings as f64 / (response1.usage.input_tokens + response2.usage.input_tokens + response3.usage.input_tokens) as f64) * 100.0);
+    println!(
+        "  Estimated cost savings: ~{:.2}%",
+        (total_cache_savings as f64
+            / (response1.usage.input_tokens
+                + response2.usage.input_tokens
+                + response3.usage.input_tokens) as f64)
+            * 100.0
+    );
 
     Ok(())
 }
 
 /// Helper function to extract text content from message content blocks
 fn extract_text_content(content: &[ContentBlock]) -> String {
-    content.iter()
+    content
+        .iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text.clone()),
             _ => None,

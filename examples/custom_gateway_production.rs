@@ -1,11 +1,14 @@
-use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
+#![allow(dead_code)]
+
 use anthropic_sdk::types::ContentBlock;
+use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
 use dotenvy::dotenv;
 use std::time::Duration;
 
 // Helper function to extract text content from response
 fn extract_text_from_content(content: &[ContentBlock]) -> String {
-    content.iter()
+    content
+        .iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text.as_str()),
             _ => None,
@@ -17,8 +20,7 @@ fn extract_text_from_content(content: &[ContentBlock]) -> String {
 /// Get model name from environment or use default
 fn get_model_name() -> String {
     dotenv().ok();
-    std::env::var("CUSTOM_MODEL_NAME")
-        .unwrap_or_else(|_| "claude-3-7-sonnet@20250219".to_string())
+    std::env::var("CUSTOM_MODEL_NAME").unwrap_or_else(|_| "claude-3-7-sonnet@20250219".to_string())
 }
 
 #[tokio::main]
@@ -48,11 +50,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client1 = Anthropic::with_config(config1)?;
 
     // Test the client
-    let response = client1.messages()
+    let response = client1
+        .messages()
         .create(
             MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 100)
                 .user("Hello! Please confirm the custom gateway integration is working.")
-                .build()
+                .build(),
         )
         .await?;
 
@@ -71,12 +74,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn test_client(client: &Anthropic, method_name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let response = client.messages()
+async fn test_client(
+    client: &Anthropic,
+    method_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 100)
-                .user(format!("Hello! Confirm {method_name} is working correctly."))
-                .build()
+                .user(format!(
+                    "Hello! Confirm {method_name} is working correctly."
+                ))
+                .build(),
         )
         .await;
 
@@ -85,8 +94,10 @@ async fn test_client(client: &Anthropic, method_name: &str) -> Result<(), Box<dy
             println!("   ✅ SUCCESS!");
             let text = extract_text_from_content(&msg.content);
             println!("   📝 Response: {text}");
-            println!("   📊 Usage: {} input, {} output tokens",
-                msg.usage.input_tokens, msg.usage.output_tokens);
+            println!(
+                "   📊 Usage: {} input, {} output tokens",
+                msg.usage.input_tokens, msg.usage.output_tokens
+            );
         }
         Err(e) => {
             println!("   ❌ FAILED: {e}");

@@ -1,11 +1,12 @@
-use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
 use anthropic_sdk::types::ContentBlock;
-use std::time::Duration;
+use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
 use std::env;
+use std::time::Duration;
 
 // Helper function to extract text content from response
 fn extract_text_from_content(content: &[ContentBlock]) -> String {
-    content.iter()
+    content
+        .iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text.as_str()),
             _ => None,
@@ -23,8 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|_| env::var("ANTHROPIC_API_KEY"))
         .expect("⚠️  No API key found. Please set CUSTOM_BEARER_TOKEN or ANTHROPIC_API_KEY");
 
-    let base_url = env::var("CUSTOM_BASE_URL")
-        .expect("⚠️  No base URL found. Please set CUSTOM_BASE_URL");
+    let base_url =
+        env::var("CUSTOM_BASE_URL").expect("⚠️  No base URL found. Please set CUSTOM_BASE_URL");
 
     // Custom configuration for custom gateway
     let config = ClientConfig::new(&api_key)
@@ -52,8 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ Test 1 PASSED!");
             let text = extract_text_from_content(&msg.content);
             println!("📝 Response: {text}");
-            println!("📊 Usage: {} input tokens, {} output tokens\n",
-                msg.usage.input_tokens, msg.usage.output_tokens);
+            println!(
+                "📊 Usage: {} input tokens, {} output tokens\n",
+                msg.usage.input_tokens, msg.usage.output_tokens
+            );
         }
         Err(e) => {
             println!("❌ Test 1 FAILED!");
@@ -68,12 +71,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 2: System prompt + user message
     println!("🧪 Test 2: System prompt + user message...");
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 150)
                 .system("You are a helpful assistant that responds concisely.")
                 .user("What is 2+2? Please answer briefly.")
-                .build()
+                .build(),
         )
         .await;
 
@@ -82,8 +86,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ Test 2 PASSED!");
             let text = extract_text_from_content(&msg.content);
             println!("📝 Response: {text}");
-            println!("📊 Usage: {} input tokens, {} output tokens\n",
-                msg.usage.input_tokens, msg.usage.output_tokens);
+            println!(
+                "📊 Usage: {} input tokens, {} output tokens\n",
+                msg.usage.input_tokens, msg.usage.output_tokens
+            );
         }
         Err(e) => {
             println!("❌ Test 2 FAILED!");
@@ -93,12 +99,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 3: Temperature and max_tokens variation
     println!("🧪 Test 3: Temperature variation...");
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new("claude-3-7-sonnet@20250219", 200)
                 .user("Generate a creative one-liner joke.")
                 .temperature(0.8)
-                .build()
+                .build(),
         )
         .await;
 
@@ -107,8 +114,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ Test 3 PASSED!");
             let text = extract_text_from_content(&msg.content);
             println!("📝 Response: {text}");
-            println!("📊 Usage: {} input tokens, {} output tokens\n",
-                msg.usage.input_tokens, msg.usage.output_tokens);
+            println!(
+                "📊 Usage: {} input tokens, {} output tokens\n",
+                msg.usage.input_tokens, msg.usage.output_tokens
+            );
         }
         Err(e) => {
             println!("❌ Test 3 FAILED!");

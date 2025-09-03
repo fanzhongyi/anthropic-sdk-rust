@@ -1,8 +1,8 @@
-use crate::types::{
-    FileObject, FileUploadParams, FileListParams, FileList, FileDownload,
-    UploadProgress, StorageInfo, AnthropicError, Result,
-};
 use crate::http::HttpClient;
+use crate::types::{
+    AnthropicError, FileDownload, FileList, FileListParams, FileObject, FileUploadParams, Result,
+    StorageInfo, UploadProgress,
+};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
@@ -20,13 +20,13 @@ impl FilesResource {
     }
 
     /// Upload a file to the Anthropic API
-    /// 
+    ///
     /// # Arguments
     /// * `params` - Upload parameters including content, filename, and purpose
-    /// 
+    ///
     /// # Returns
     /// A new `FileObject` with the uploaded file information
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the upload fails or if the parameters are invalid
     pub async fn upload(&self, params: FileUploadParams) -> Result<FileObject> {
@@ -48,14 +48,14 @@ impl FilesResource {
     }
 
     /// Upload a file with progress tracking
-    /// 
+    ///
     /// # Arguments
     /// * `params` - Upload parameters
     /// * `progress_callback` - Called with progress updates during upload
-    /// 
+    ///
     /// # Returns
     /// The uploaded `FileObject`
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the upload fails
     pub async fn upload_with_progress<F>(
@@ -81,7 +81,11 @@ impl FilesResource {
             uploaded += chunk;
 
             let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { uploaded as f64 / elapsed } else { 0.0 };
+            let speed = if elapsed > 0.0 {
+                uploaded as f64 / elapsed
+            } else {
+                0.0
+            };
 
             let progress = UploadProgress::new(uploaded, total_size).with_speed(speed);
             progress_callback(progress);
@@ -95,13 +99,13 @@ impl FilesResource {
     }
 
     /// Retrieve a file by ID
-    /// 
+    ///
     /// # Arguments
     /// * `file_id` - The ID of the file to retrieve
-    /// 
+    ///
     /// # Returns
     /// The `FileObject` with current information
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the file is not found or if the request fails
     pub async fn get(&self, file_id: &str) -> Result<FileObject> {
@@ -116,13 +120,13 @@ impl FilesResource {
     }
 
     /// List files with optional filtering and pagination
-    /// 
+    ///
     /// # Arguments
     /// * `params` - Optional parameters for filtering and pagination
-    /// 
+    ///
     /// # Returns
     /// A `FileList` containing files and pagination information
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the request fails
     pub async fn list(&self, params: Option<FileListParams>) -> Result<FileList> {
@@ -149,13 +153,13 @@ impl FilesResource {
     }
 
     /// Download file content
-    /// 
+    ///
     /// # Arguments
     /// * `file_id` - The ID of the file to download
-    /// 
+    ///
     /// # Returns
     /// A `FileDownload` containing the file content and metadata
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the file is not found or cannot be downloaded
     pub async fn download(&self, file_id: &str) -> Result<FileDownload> {
@@ -192,13 +196,13 @@ impl FilesResource {
     }
 
     /// Delete a file
-    /// 
+    ///
     /// # Arguments
     /// * `file_id` - The ID of the file to delete
-    /// 
+    ///
     /// # Returns
     /// The updated `FileObject` with deletion status
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the file cannot be deleted or if the request fails
     pub async fn delete(&self, file_id: &str) -> Result<FileObject> {
@@ -213,33 +217,29 @@ impl FilesResource {
     }
 
     /// Get storage information and quotas
-    /// 
+    ///
     /// # Returns
     /// `StorageInfo` with current usage and quotas
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the request fails
     pub async fn get_storage_info(&self) -> Result<StorageInfo> {
-        let response = self
-            .http_client
-            .get("/v1/files/storage")
-            .send()
-            .await?;
+        let response = self.http_client.get("/v1/files/storage").send().await?;
 
         let storage_info: StorageInfo = response.json().await?;
         Ok(storage_info)
     }
 
     /// Wait for a file to be processed
-    /// 
+    ///
     /// # Arguments
     /// * `file_id` - The ID of the file to wait for
     /// * `poll_interval` - How often to check the status (default: 2 seconds)
     /// * `timeout` - Maximum time to wait (default: 5 minutes)
-    /// 
+    ///
     /// # Returns
     /// The processed `FileObject`
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the file processing fails or times out
     pub async fn wait_for_processing(
@@ -299,14 +299,14 @@ impl FilesResource {
 /// High-level file management utilities
 impl FilesResource {
     /// Upload multiple files concurrently
-    /// 
+    ///
     /// # Arguments
     /// * `uploads` - Vector of upload parameters
     /// * `max_concurrent` - Maximum number of concurrent uploads
-    /// 
+    ///
     /// # Returns
     /// Vector of uploaded file objects
-    /// 
+    ///
     /// # Errors
     /// Returns an error if any upload fails
     pub async fn upload_batch(
@@ -316,13 +316,13 @@ impl FilesResource {
     ) -> Result<Vec<FileObject>> {
         let max_concurrent = max_concurrent.unwrap_or(3);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
-        
+
         let tasks: Vec<_> = uploads
             .into_iter()
             .map(|params| {
                 let files_resource = self.clone();
                 let semaphore = semaphore.clone();
-                
+
                 tokio::spawn(async move {
                     let _permit = semaphore.acquire().await.unwrap();
                     files_resource.upload(params).await
@@ -332,7 +332,9 @@ impl FilesResource {
 
         let mut results = Vec::new();
         for task in tasks {
-            let result = task.await.map_err(|e| AnthropicError::Other(e.to_string()))??;
+            let result = task
+                .await
+                .map_err(|e| AnthropicError::Other(e.to_string()))??;
             results.push(result);
         }
 
@@ -340,41 +342,39 @@ impl FilesResource {
     }
 
     /// Clean up old files based on age
-    /// 
+    ///
     /// # Arguments
     /// * `max_age` - Maximum age for files to keep
-    /// 
+    ///
     /// # Returns
     /// Number of files deleted
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the cleanup operation fails
     pub async fn cleanup_old_files(&self, max_age: Duration) -> Result<u32> {
         let files = self.list(None).await?;
         let cutoff_time = chrono::Utc::now() - chrono::Duration::from_std(max_age)?;
-        
+
         let mut deleted_count = 0;
-        
+
         for file in files.data {
-            if file.created_at < cutoff_time {
-                if let Ok(_) = self.delete(&file.id).await {
-                    deleted_count += 1;
-                }
+            if file.created_at < cutoff_time && self.delete(&file.id).await.is_ok() {
+                deleted_count += 1;
             }
         }
-        
+
         Ok(deleted_count)
     }
 
     /// Get files by purpose with optional filtering
-    /// 
+    ///
     /// # Arguments
     /// * `purpose` - File purpose to filter by
     /// * `limit` - Maximum number of files to return
-    /// 
+    ///
     /// # Returns
     /// Vector of matching file objects
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the request fails
     pub async fn get_files_by_purpose(
@@ -385,7 +385,7 @@ impl FilesResource {
         let params = FileListParams::new()
             .purpose(purpose)
             .limit(limit.unwrap_or(50));
-        
+
         let file_list = self.list(Some(params)).await?;
         Ok(file_list.data)
     }
@@ -398,10 +398,10 @@ fn extract_filename_from_disposition(disposition: Option<&str>) -> Option<String
         if let Some(start) = d.find("filename=") {
             let start = start + 9; // "filename=".len()
             let rest = &d[start..];
-            
-            if rest.starts_with('"') {
+
+            if let Some(stripped) = rest.strip_prefix('"') {
                 // Quoted filename
-                rest[1..].split('"').next().map(|s| s.to_string())
+                stripped.split('"').next().map(|s| s.to_string())
             } else {
                 // Unquoted filename
                 rest.split(';').next().map(|s| s.trim().to_string())
@@ -423,21 +423,15 @@ mod tests {
             extract_filename_from_disposition(Some(r#"attachment; filename="test.txt""#)),
             Some("test.txt".to_string())
         );
-        
+
         assert_eq!(
             extract_filename_from_disposition(Some(r#"attachment; filename=test.txt"#)),
             Some("test.txt".to_string())
         );
-        
-        assert_eq!(
-            extract_filename_from_disposition(Some(r#"inline"#)),
-            None
-        );
-        
-        assert_eq!(
-            extract_filename_from_disposition(None),
-            None
-        );
+
+        assert_eq!(extract_filename_from_disposition(Some(r#"inline"#)), None);
+
+        assert_eq!(extract_filename_from_disposition(None), None);
     }
 
     #[test]
@@ -466,4 +460,4 @@ mod tests {
         assert_eq!(params.limit, Some(10));
         assert_eq!(params.after, Some("file_123".to_string()));
     }
-} 
+}

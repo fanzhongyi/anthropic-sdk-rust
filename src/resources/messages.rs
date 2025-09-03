@@ -1,8 +1,8 @@
 use crate::client::Anthropic;
-use crate::types::messages::*;
-use crate::types::errors::{AnthropicError, Result};
+use crate::http::streaming::{StreamConfig, StreamRequestBuilder};
 use crate::streaming::MessageStream;
-use crate::http::streaming::{StreamRequestBuilder, StreamConfig};
+use crate::types::errors::{AnthropicError, Result};
+use crate::types::messages::*;
 
 /// Messages API resource for interacting with Claude
 pub struct MessagesResource<'a> {
@@ -76,34 +76,50 @@ impl<'a> MessagesResource<'a> {
     }
 
     /// Internal method to create messages with optional extended cache
-    async fn create_with_options(&self, params: MessageCreateParams, extended_cache: bool) -> Result<Message> {
+    async fn create_with_options(
+        &self,
+        params: MessageCreateParams,
+        extended_cache: bool,
+    ) -> Result<Message> {
         let url = self.client.http_client().build_url("/v1/messages");
 
-        let mut request_builder = self.client.http_client()
+        let mut request_builder = self
+            .client
+            .http_client()
             .post(&url)
             .header("anthropic-version", "2023-06-01")
             .json(&params);
 
         // Add beta headers if needed
         if extended_cache {
-            request_builder = request_builder.header("anthropic-beta", "extended-cache-ttl-2025-04-11");
+            request_builder =
+                request_builder.header("anthropic-beta", "extended-cache-ttl-2025-04-11");
         }
 
         // Check if thinking is enabled and add beta header
         if params.thinking.is_some() {
-            request_builder = request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+            request_builder =
+                request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
         }
 
-        let request = request_builder.build()
-            .map_err(|e| AnthropicError::Connection { message: e.to_string() })?;
+        let request = request_builder
+            .build()
+            .map_err(|e| AnthropicError::Connection {
+                message: e.to_string(),
+            })?;
 
         let response = self.client.http_client().send(request).await?;
 
         // Extract request ID from headers
         let request_id = self.client.http_client().extract_request_id(&response);
 
-        let mut message: Message = response.json().await
-            .map_err(|e| AnthropicError::Connection { message: e.to_string() })?;
+        let mut message: Message =
+            response
+                .json()
+                .await
+                .map_err(|e| AnthropicError::Connection {
+                    message: e.to_string(),
+                })?;
 
         message.request_id = request_id;
 
@@ -175,12 +191,19 @@ impl<'a> MessagesResource<'a> {
     ///     // Process thinking and text deltas
     /// }
     /// ```
-    pub async fn create_stream_with_extended_cache(&self, params: MessageCreateParams) -> Result<MessageStream> {
+    pub async fn create_stream_with_extended_cache(
+        &self,
+        params: MessageCreateParams,
+    ) -> Result<MessageStream> {
         self.create_stream_with_options(params, true).await
     }
 
     /// Internal method to create streaming messages with optional extended cache
-    async fn create_stream_with_options(&self, mut params: MessageCreateParams, extended_cache: bool) -> Result<MessageStream> {
+    async fn create_stream_with_options(
+        &self,
+        mut params: MessageCreateParams,
+        extended_cache: bool,
+    ) -> Result<MessageStream> {
         // Ensure streaming is enabled
         params.stream = Some(true);
 
@@ -199,18 +222,18 @@ impl<'a> MessagesResource<'a> {
 
         // Add beta headers if needed
         if extended_cache {
-            stream_builder = stream_builder.header("anthropic-beta", "extended-cache-ttl-2025-04-11");
+            stream_builder =
+                stream_builder.header("anthropic-beta", "extended-cache-ttl-2025-04-11");
         }
 
         // Check if thinking is enabled and add beta header
         if params.thinking.is_some() {
-            stream_builder = stream_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+            stream_builder =
+                stream_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
         }
 
         // Make the streaming request to get the real HTTP stream
-        let http_stream = stream_builder
-            .post_stream("v1/messages", &params)
-            .await?;
+        let http_stream = stream_builder.post_stream("v1/messages", &params).await?;
 
         // Create MessageStream that processes the real HTTP stream events
         let message_stream = MessageStream::from_http_stream(http_stream)?;
@@ -268,7 +291,11 @@ impl<'a> MessagesResource<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn create_with_builder(&'a self, model: impl Into<String>, max_tokens: u32) -> MessageCreateBuilderWithClient<'a> {
+    pub fn create_with_builder(
+        &'a self,
+        model: impl Into<String>,
+        max_tokens: u32,
+    ) -> MessageCreateBuilderWithClient<'a> {
         MessageCreateBuilderWithClient {
             resource: self,
             builder: MessageCreateBuilder::new(model, max_tokens),
@@ -381,7 +408,7 @@ impl<'a> MessageCreateBuilderWithClient<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::messages::{MessageContent, ContentBlockParam};
+    use crate::types::messages::{ContentBlockParam, MessageContent};
 
     #[test]
     fn test_message_create_params_serialization() {
@@ -400,7 +427,11 @@ mod tests {
 
         // Handle floating point precision by checking if the value is close to 0.7
         let temperature = json["temperature"].as_f64().unwrap();
-        assert!((temperature - 0.7).abs() < 0.001, "Temperature should be close to 0.7, got {}", temperature);
+        assert!(
+            (temperature - 0.7).abs() < 0.001,
+            "Temperature should be close to 0.7, got {}",
+            temperature
+        );
     }
 
     #[test]

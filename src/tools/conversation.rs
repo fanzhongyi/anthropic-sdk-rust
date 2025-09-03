@@ -3,13 +3,13 @@
 //! This module provides abstractions for managing multi-turn conversations
 //! that involve tool use, handling the back-and-forth between Claude and tools.
 
-use std::sync::Arc;
+use super::{ToolError, ToolExecutionConfig, ToolExecutor, ToolOperationResult, ToolRegistry};
 use crate::client::Anthropic;
 use crate::types::{
-    Message, ToolChoice, ToolResult, MessageCreateBuilder,
-    ToolResultContentParam, ToolResultNestedBlockParam, ImageSource, ToolImageSource,
+    ImageSource, Message, MessageCreateBuilder, ToolChoice, ToolImageSource, ToolResult,
+    ToolResultContentParam, ToolResultNestedBlockParam,
 };
-use super::{ToolRegistry, ToolExecutor, ToolExecutionConfig, ToolOperationResult, ToolError};
+use std::sync::Arc;
 
 /// High-level tool conversation manager.
 ///
@@ -110,7 +110,9 @@ impl ToolConversation {
             }
         }
 
-        let message = self.client.messages()
+        let message = self
+            .client
+            .messages()
             .create(builder.build())
             .await
             .map_err(|e| ToolError::ExecutionFailed { source: e.into() })?;
@@ -122,7 +124,10 @@ impl ToolConversation {
     ///
     /// This method takes a message that may contain tool use requests, executes the tools,
     /// and returns Claude's response incorporating the tool results.
-    pub async fn continue_with_tools(&self, message: &Message) -> ToolOperationResult<Option<Message>> {
+    pub async fn continue_with_tools(
+        &self,
+        message: &Message,
+    ) -> ToolOperationResult<Option<Message>> {
         let tool_uses = self.executor.extract_tool_uses(message);
 
         if tool_uses.is_empty() {
@@ -152,43 +157,51 @@ impl ToolConversation {
         }
 
         // Create a follow-up message with tool results
-        use crate::types::messages::{MessageContent, ContentBlockParam};
+        use crate::types::messages::{ContentBlockParam, MessageContent};
 
         // Convert tool results to content blocks
-        let tool_result_blocks: Vec<ContentBlockParam> = results.into_iter().map(|result| {
-            let content = match result.content {
-                crate::types::ToolResultContent::Text(text) => Some(ToolResultContentParam::Text(text)),
-                crate::types::ToolResultContent::Json(json) => Some(ToolResultContentParam::Text(json.to_string())),
-                crate::types::ToolResultContent::Blocks(blocks) => {
-                    let nested: Vec<ToolResultNestedBlockParam> = blocks
-                        .into_iter()
-                        .map(|block| match block {
-                            crate::types::ToolResultBlock::Text { text } => {
-                                ToolResultNestedBlockParam::Text { text, cache_control: None }
-                            }
-                            crate::types::ToolResultBlock::Image { source } => {
-                                match source {
+        let tool_result_blocks: Vec<ContentBlockParam> = results
+            .into_iter()
+            .map(|result| {
+                let content = match result.content {
+                    crate::types::ToolResultContent::Text(text) => {
+                        Some(ToolResultContentParam::Text(text))
+                    }
+                    crate::types::ToolResultContent::Json(json) => {
+                        Some(ToolResultContentParam::Text(json.to_string()))
+                    }
+                    crate::types::ToolResultContent::Blocks(blocks) => {
+                        let nested: Vec<ToolResultNestedBlockParam> = blocks
+                            .into_iter()
+                            .map(|block| match block {
+                                crate::types::ToolResultBlock::Text { text } => {
+                                    ToolResultNestedBlockParam::Text {
+                                        text,
+                                        cache_control: None,
+                                    }
+                                }
+                                crate::types::ToolResultBlock::Image { source } => match source {
                                     ToolImageSource::Base64 { media_type, data } => {
                                         ToolResultNestedBlockParam::Image {
                                             source: ImageSource::Base64 { media_type, data },
                                             cache_control: None,
                                         }
                                     }
-                                }
-                            }
-                        })
-                        .collect();
-                    Some(ToolResultContentParam::Blocks(nested))
-                }
-            };
+                                },
+                            })
+                            .collect();
+                        Some(ToolResultContentParam::Blocks(nested))
+                    }
+                };
 
-            ContentBlockParam::ToolResult {
-                tool_use_id: result.tool_use_id,
-                content,
-                is_error: result.is_error,
-                cache_control: None,
-            }
-        }).collect();
+                ContentBlockParam::ToolResult {
+                    tool_use_id: result.tool_use_id,
+                    content,
+                    is_error: result.is_error,
+                    cache_control: None,
+                }
+            })
+            .collect();
 
         let mut builder = MessageCreateBuilder::new(&self.config.model, self.config.max_tokens)
             .user(MessageContent::Blocks(tool_result_blocks));
@@ -203,7 +216,9 @@ impl ToolConversation {
             }
         }
 
-        let next_message = self.client.messages()
+        let next_message = self
+            .client
+            .messages()
             .create(builder.build())
             .await
             .map_err(|e| ToolError::ExecutionFailed { source: e.into() })?;
@@ -215,7 +230,10 @@ impl ToolConversation {
     ///
     /// This method manages the entire conversation flow, automatically executing tools
     /// and continuing the conversation until Claude provides a final response.
-    pub async fn execute_until_complete(&self, initial_message: impl Into<String>) -> ToolOperationResult<Message> {
+    pub async fn execute_until_complete(
+        &self,
+        initial_message: impl Into<String>,
+    ) -> ToolOperationResult<Message> {
         let mut current_message = self.start(initial_message).await?;
         let mut turn_count = 1;
 
@@ -259,10 +277,9 @@ impl ToolConversation {
     /// Update the conversation configuration.
     pub fn set_config(&mut self, config: ConversationConfig) {
         self.config = config;
-        self.executor.set_config(self.config.execution_config.clone());
+        self.executor
+            .set_config(self.config.execution_config.clone());
     }
-
-
 }
 
 /// Builder for creating conversation configurations.

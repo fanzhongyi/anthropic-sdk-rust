@@ -8,8 +8,7 @@
 //! - Create reusable tool functions
 
 use anthropic_sdk::{
-    Tool, ToolRegistry, ToolExecutor, ToolFunction,
-    ToolResult, ToolExecutionConfig, tool_function,
+    tool_function, Tool, ToolExecutionConfig, ToolExecutor, ToolFunction, ToolRegistry, ToolResult,
 };
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -21,7 +20,10 @@ struct WeatherTool;
 
 #[async_trait]
 impl ToolFunction for WeatherTool {
-    async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        input: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
         let location = input["location"].as_str().unwrap_or("Unknown Location");
         let unit = input["unit"].as_str().unwrap_or("fahrenheit");
 
@@ -45,7 +47,10 @@ impl ToolFunction for WeatherTool {
         Ok(ToolResult::success_json("weather_result", weather_data))
     }
 
-    fn validate_input(&self, input: &Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn validate_input(
+        &self,
+        input: &Value,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(location) = input.get("location") {
             if location.as_str().map_or(true, |s| s.trim().is_empty()) {
                 return Err("Location cannot be empty".into());
@@ -60,10 +65,14 @@ impl ToolFunction for WeatherTool {
 }
 
 /// Example calculator tool using the simple function wrapper
-async fn calculate_tool(input: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+async fn calculate_tool(
+    input: Value,
+) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
     let a = input["a"].as_f64().ok_or("Missing parameter 'a'")?;
     let b = input["b"].as_f64().ok_or("Missing parameter 'b'")?;
-    let operation = input["operation"].as_str().ok_or("Missing parameter 'operation'")?;
+    let operation = input["operation"]
+        .as_str()
+        .ok_or("Missing parameter 'operation'")?;
 
     let result = match operation {
         "add" => a + b,
@@ -78,7 +87,10 @@ async fn calculate_tool(input: Value) -> Result<ToolResult, Box<dyn std::error::
         _ => return Ok(ToolResult::error("calc_error", "Unknown operation")),
     };
 
-    Ok(ToolResult::success("calc_result", format!("{a} {operation} {b} = {result}")))
+    Ok(ToolResult::success(
+        "calc_result",
+        format!("{a} {operation} {b} = {result}"),
+    ))
 }
 
 /// Example time tool using the macro
@@ -89,10 +101,12 @@ fn create_time_tool() -> Box<dyn ToolFunction> {
             .unwrap()
             .as_secs();
 
-        let datetime = chrono::DateTime::from_timestamp(now as i64, 0)
-            .unwrap_or_default();
+        let datetime = chrono::DateTime::from_timestamp(now as i64, 0).unwrap_or_default();
 
-        Ok(ToolResult::success("time_result", format!("Current time: {}", datetime.format("%Y-%m-%d %H:%M:%S UTC"))))
+        Ok(ToolResult::success(
+            "time_result",
+            format!("Current time: {}", datetime.format("%Y-%m-%d %H:%M:%S UTC")),
+        ))
     }))
 }
 
@@ -109,34 +123,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut registry = ToolRegistry::new();
 
     // Weather tool with validation
-    let weather_tool_def = Tool::new("get_weather", "Get current weather information for a location")
-        .parameter("location", "string", "The city and state, e.g. 'San Francisco, CA'")
-        .parameter("unit", "string", "Temperature unit ('celsius' or 'fahrenheit')")
-        .required("location")
-        .build();
+    let weather_tool_def = Tool::new(
+        "get_weather",
+        "Get current weather information for a location",
+    )
+    .parameter(
+        "location",
+        "string",
+        "The city and state, e.g. 'San Francisco, CA'",
+    )
+    .parameter(
+        "unit",
+        "string",
+        "Temperature unit ('celsius' or 'fahrenheit')",
+    )
+    .required("location")
+    .build();
 
-    registry.register("get_weather", weather_tool_def, Box::new(WeatherTool))
+    registry
+        .register("get_weather", weather_tool_def, Box::new(WeatherTool))
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     // Calculator tool using simple function
     let calc_tool_def = Tool::new("calculate", "Perform mathematical calculations")
         .parameter("a", "number", "First number")
         .parameter("b", "number", "Second number")
-        .parameter("operation", "string", "Operation: add, subtract, multiply, divide")
+        .parameter(
+            "operation",
+            "string",
+            "Operation: add, subtract, multiply, divide",
+        )
         .required("a")
         .required("b")
         .required("operation")
         .build();
 
-    registry.register("calculate", calc_tool_def, Box::new(anthropic_sdk::tools::SimpleTool::new(
-        |input| Box::pin(calculate_tool(input))
-    ))).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    registry
+        .register(
+            "calculate",
+            calc_tool_def,
+            Box::new(anthropic_sdk::tools::SimpleTool::new(|input| {
+                Box::pin(calculate_tool(input))
+            })),
+        )
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     // Time tool using macro
-    let time_tool_def = Tool::new("get_time", "Get the current time")
-        .build();
+    let time_tool_def = Tool::new("get_time", "Get the current time").build();
 
-    registry.register("get_time", time_tool_def, create_time_tool())
+    registry
+        .register("get_time", time_tool_def, create_time_tool())
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     println!("   ✅ Registered {} tools", registry.len());
@@ -221,12 +257,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let results = executor.execute_multiple(&tool_uses).await;
     let duration = start_time.elapsed();
 
-    println!("   ⚡ Executed {} tools in parallel in {:?}", results.len(), duration);
+    println!(
+        "   ⚡ Executed {} tools in parallel in {:?}",
+        results.len(),
+        duration
+    );
 
     for (i, result) in results.iter().enumerate() {
         match result {
             Ok(tool_result) => {
-                println!("     {}. ✅ {}: {:?}", i + 1, tool_result.tool_use_id, tool_result.content);
+                println!(
+                    "     {}. ✅ {}: {:?}",
+                    i + 1,
+                    tool_result.tool_use_id,
+                    tool_result.content
+                );
             }
             Err(e) => {
                 println!("     {}. ❌ Error: {}", i + 1, e);
@@ -279,9 +324,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let definitions = executor.registry().get_tool_definitions();
     for tool in &definitions {
         println!("   🔧 {}: {}", tool.name, tool.description);
-        println!("      Parameters: {} (Required: {:?})",
-                 tool.input_schema.properties.len(),
-                 tool.input_schema.required);
+        println!(
+            "      Parameters: {} (Required: {:?})",
+            tool.input_schema.properties.len(),
+            tool.input_schema.required
+        );
     }
 
     println!("\n✨ Tool use demonstration complete!");
@@ -305,7 +352,7 @@ mod tests {
 
         let result = tool.execute(input).await.unwrap();
         assert_eq!(result.tool_use_id, "weather_result");
-        assert!(result.is_error.is_none());
+        assert_eq!(result.is_error, Some(false));
     }
 
     #[tokio::test]

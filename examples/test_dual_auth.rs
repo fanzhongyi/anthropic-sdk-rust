@@ -1,11 +1,12 @@
-use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
 use anthropic_sdk::types::ContentBlock;
-use std::time::Duration;
+use anthropic_sdk::{Anthropic, ClientConfig, MessageCreateBuilder};
 use std::env;
+use std::time::Duration;
 
 // Helper function to extract text content from response
 fn extract_text_from_content(content: &[ContentBlock]) -> String {
-    content.iter()
+    content
+        .iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text.as_str()),
             _ => None,
@@ -44,16 +45,20 @@ async fn test_anthropic_auth() -> Result<(), Box<dyn std::error::Error>> {
 
             let client = Anthropic::from_env()?;
 
-            let response = client.messages()
+            let response = client
+                .messages()
                 .create(
                     MessageCreateBuilder::new("claude-3-haiku@20240307", 50)
                         .user("Hello from standard Anthropic API!")
-                        .build()
+                        .build(),
                 )
                 .await?;
 
             println!("   ✅ Standard Anthropic API works!");
-            println!("   📝 Response: {}", extract_text_from_content(&response.content));
+            println!(
+                "   📝 Response: {}",
+                extract_text_from_content(&response.content)
+            );
         }
         Err(_) => {
             println!("   ⚠️  ANTHROPIC_API_KEY not set, skipping standard API test");
@@ -64,11 +69,11 @@ async fn test_anthropic_auth() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn test_custom_auth() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = env::var("CUSTOM_BEARER_TOKEN")
-        .expect("Need CUSTOM_BEARER_TOKEN for custom gateway test");
+    let api_key =
+        env::var("CUSTOM_BEARER_TOKEN").expect("Need CUSTOM_BEARER_TOKEN for custom gateway test");
 
-    let base_url = env::var("CUSTOM_BASE_URL")
-        .expect("Need CUSTOM_BASE_URL for custom gateway test");
+    let base_url =
+        env::var("CUSTOM_BASE_URL").expect("Need CUSTOM_BASE_URL for custom gateway test");
 
     println!("   📡 URL: {base_url}");
     println!("   🔑 Using Bearer token authentication");
@@ -80,33 +85,40 @@ async fn test_custom_auth() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Anthropic::with_config(config)?;
 
-    let response = client.messages()
+    let response = client
+        .messages()
         .create(
             MessageCreateBuilder::new("claude-3-haiku@20240307", 50)
                 .user("Hello from Custom Gateway!")
-                .build()
+                .build(),
         )
         .await?;
 
     println!("   ✅ Custom Gateway (Method 1) works!");
-    println!("   📝 Response: {}", extract_text_from_content(&response.content));
+    println!(
+        "   📝 Response: {}",
+        extract_text_from_content(&response.content)
+    );
 
     // Method 2: Using for_custom_gateway convenience method (if available)
-    let custom_config = ClientConfig::new(api_key)
-        .with_base_url(&base_url);
+    let custom_config = ClientConfig::new(api_key).with_base_url(&base_url);
 
     let custom_client = Anthropic::with_config(custom_config)?;
 
-    let response2 = custom_client.messages()
+    let response2 = custom_client
+        .messages()
         .create(
             MessageCreateBuilder::new("claude-3-haiku@20240307", 50)
                 .user("Hello from Custom convenience config!")
-                .build()
+                .build(),
         )
         .await?;
 
     println!("   ✅ Custom Gateway (Method 2) works!");
-    println!("   📝 Response: {}", extract_text_from_content(&response2.content));
+    println!(
+        "   📝 Response: {}",
+        extract_text_from_content(&response2.content)
+    );
 
     Ok(())
 }

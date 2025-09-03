@@ -4,8 +4,8 @@
 //! Perfect for quick testing during development.
 
 use anthropic_sdk::{
+    types::{CacheControl, MessageCreateBuilder, SystemContentBlock},
     Anthropic,
-    types::{MessageCreateBuilder, SystemContentBlock, CacheControl}
 };
 
 #[tokio::main]
@@ -30,15 +30,22 @@ async fn main() {
 
     // Test 1: Extended Thinking (simplest test)
     println!("🤔 Testing Extended Thinking...");
-    match client.messages().create(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
-            .thinking(1024)
-            .user("What is 15 + 27? Think step by step.")
-            .build()
-    ).await {
+    match client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 4096)
+                .thinking(1024)
+                .user("What is 15 + 27? Think step by step.")
+                .build(),
+        )
+        .await
+    {
         Ok(msg) => {
             println!("✅ Extended thinking request succeeded!");
-            println!("📊 Tokens: {} in, {} out", msg.usage.input_tokens, msg.usage.output_tokens);
+            println!(
+                "📊 Tokens: {} in, {} out",
+                msg.usage.input_tokens, msg.usage.output_tokens
+            );
 
             // Print response content
             println!("📄 Response content:");
@@ -46,11 +53,14 @@ async fn main() {
                 match block {
                     anthropic_sdk::types::ContentBlock::Text { text } => {
                         println!("   [{i}] Text: {text}");
-                    },
-                    anthropic_sdk::types::ContentBlock::Thinking { thinking, signature } => {
+                    }
+                    anthropic_sdk::types::ContentBlock::Thinking {
+                        thinking,
+                        signature,
+                    } => {
                         println!("   [{i}] Thinking: {thinking}");
                         println!("       Signature: {signature}");
-                    },
+                    }
                     _ => {
                         println!("   [{i}] Other content type: {block:?}");
                     }
@@ -58,16 +68,17 @@ async fn main() {
             }
 
             // Check for thinking content
-            let has_thinking = msg.content.iter().any(|block| {
-                matches!(block, anthropic_sdk::types::ContentBlock::Thinking { .. })
-            });
+            let has_thinking = msg
+                .content
+                .iter()
+                .any(|block| matches!(block, anthropic_sdk::types::ContentBlock::Thinking { .. }));
 
             if has_thinking {
                 println!("🧠 Thinking content detected!");
             } else {
                 println!("ℹ️  No thinking content (might be normal for simple questions)");
             }
-        },
+        }
         Err(e) => println!("❌ Extended thinking failed: {e}"),
     }
 
@@ -77,20 +88,25 @@ async fn main() {
     println!("💾 Testing Prompt Caching...");
     let system_prompt = "You are a helpful assistant with expertise in mathematics and science.";
 
-    match client.messages().create(
-        MessageCreateBuilder::new("claude-sonnet-4@20250514", 1024)
-            .system(vec![
-                SystemContentBlock::text_with_cache(
+    match client
+        .messages()
+        .create(
+            MessageCreateBuilder::new("claude-sonnet-4@20250514", 1024)
+                .system(vec![SystemContentBlock::text_with_cache(
                     system_prompt,
-                    CacheControl::ephemeral()
-                )
-            ])
-            .user("Hello!")
-            .build()
-    ).await {
+                    CacheControl::ephemeral(),
+                )])
+                .user("Hello!")
+                .build(),
+        )
+        .await
+    {
         Ok(msg) => {
             println!("✅ Prompt caching request succeeded!");
-            println!("📊 Tokens: {} in, {} out", msg.usage.input_tokens, msg.usage.output_tokens);
+            println!(
+                "📊 Tokens: {} in, {} out",
+                msg.usage.input_tokens, msg.usage.output_tokens
+            );
 
             // Print response content
             println!("📄 Response content:");
@@ -98,11 +114,14 @@ async fn main() {
                 match block {
                     anthropic_sdk::types::ContentBlock::Text { text } => {
                         println!("   [{i}] Text: {text}");
-                    },
-                    anthropic_sdk::types::ContentBlock::Thinking { thinking, signature } => {
+                    }
+                    anthropic_sdk::types::ContentBlock::Thinking {
+                        thinking,
+                        signature,
+                    } => {
                         println!("   [{i}] Thinking: {thinking}");
                         println!("       Signature: {signature}");
-                    },
+                    }
                     _ => {
                         println!("   [{i}] Other content type: {block:?}");
                     }
@@ -116,7 +135,7 @@ async fn main() {
             if let Some(read_tokens) = msg.usage.cache_read_input_tokens {
                 println!("📖 Cache read: {read_tokens} tokens");
             }
-        },
+        }
         Err(e) => println!("❌ Prompt caching failed: {e}"),
     }
 

@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
         .with_max_retries(3)
         .with_log_level(LogLevel::Info)
         .with_base_url("https://api.anthropic.com");
-    
+
     let custom_client = Anthropic::with_config(config)?;
     println!("✅ Custom client created!");
     println!("   Timeout: {:?}", custom_client.config().timeout);
@@ -42,6 +42,6 @@ async fn main() -> Result<()> {
 
     println!("\n🎯 Phase 1 Foundation Complete!");
     println!("Ready for Phase 2: Messages API implementation");
-    
+
     Ok(())
-} 
+}

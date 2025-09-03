@@ -2,13 +2,11 @@
 //!
 //! This is a minimal test to debug the streaming tool call problem
 
-use anthropic_sdk::{
-    types::{
-        ContentBlock, ContentBlockDelta, MessageCreateBuilder, MessageStreamEvent
-    },
-    Anthropic, ToolFunction, ToolRegistry, ToolResult
-};
 use anthropic_sdk::Tool;
+use anthropic_sdk::{
+    types::{ContentBlock, ContentBlockDelta, MessageCreateBuilder, MessageStreamEvent},
+    Anthropic, ToolFunction, ToolRegistry, ToolResult,
+};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::error::Error;
@@ -17,7 +15,10 @@ pub struct WeatherTool;
 
 #[async_trait]
 impl ToolFunction for WeatherTool {
-    async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        input: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
         let weather_data = json!({
             "location": input["location"].as_str().unwrap_or("Unknown"),
             "temperature": "22°C",
@@ -51,7 +52,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Setup tool registry
     let mut registry = ToolRegistry::new();
-    registry.register("get_weather", WeatherTool::definition(), Box::new(WeatherTool))?;
+    registry.register(
+        "get_weather",
+        WeatherTool::definition(),
+        Box::new(WeatherTool),
+    )?;
     let tool_decls = registry.get_tool_definitions();
 
     println!("🔧 Testing streaming with tools...\n");
@@ -94,7 +99,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         ContentBlockDelta::InputJsonDelta { partial_json } => {
                             println!("🔧 Tool input update at index {index}: {partial_json}");
                         }
-                        ContentBlockDelta::TextDelta { text } => {
+                        ContentBlockDelta::TextDelta { text: _ } => {
                             // Text delta is handled by on_text callback
                         }
                         _ => {
@@ -110,7 +115,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     } else {
                         current_message.content.get(*index)
                     };
-                    
+
                     if let Some(content_block) = final_content_block {
                         match content_block {
                             ContentBlock::ToolUse { id, name, input } => {
@@ -137,7 +142,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
 
     println!("\n✅ Stream completed!");
-    println!("Final message has {} content blocks", stream_response.content.len());
+    println!(
+        "Final message has {} content blocks",
+        stream_response.content.len()
+    );
 
     // Print all content blocks
     for (i, block) in stream_response.content.iter().enumerate() {
@@ -155,7 +163,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Check if we have any tool calls
-    let tool_calls: Vec<_> = stream_response.content
+    let tool_calls: Vec<_> = stream_response
+        .content
         .iter()
         .filter_map(|block| {
             if let ContentBlock::ToolUse { id, name, input } = block {
@@ -176,7 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Execute the tools
     for (id, name, input) in tool_calls {
         println!("🔧 Executing tool '{}' with input: {}", name, input);
-        
+
         let tool_use = anthropic_sdk::ToolUse { id, name, input };
         match registry.execute(&tool_use).await {
             Ok(result) => {
@@ -191,4 +200,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("\n🎉 Test completed successfully!");
     Ok(())
 }
-

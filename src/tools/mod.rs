@@ -48,17 +48,17 @@
 //! # }
 //! ```
 
+pub mod conversation;
 pub mod executor;
 pub mod registry;
-pub mod conversation;
 
 use async_trait::async_trait;
 use serde_json::Value;
 use std::error::Error;
 
-pub use executor::{ToolExecutor, ToolExecutionConfig, ToolExecutionConfigBuilder};
-pub use registry::{ToolRegistry, SharedToolRegistry};
-pub use conversation::{ToolConversation, ConversationConfig, ConversationConfigBuilder};
+pub use conversation::{ConversationConfig, ConversationConfigBuilder, ToolConversation};
+pub use executor::{ToolExecutionConfig, ToolExecutionConfigBuilder, ToolExecutor};
+pub use registry::{SharedToolRegistry, ToolRegistry};
 
 use crate::types::ToolResult;
 
@@ -108,14 +108,30 @@ pub trait ToolFunction: Send + Sync {
 /// implementing the full `ToolFunction` trait.
 pub struct SimpleTool<F>
 where
-    F: Fn(Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ToolResult, Box<dyn Error + Send + Sync>>> + Send>> + Send + Sync,
+    F: Fn(
+            Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<ToolResult, Box<dyn Error + Send + Sync>>>
+                    + Send,
+            >,
+        > + Send
+        + Sync,
 {
     function: F,
 }
 
 impl<F> SimpleTool<F>
 where
-    F: Fn(Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ToolResult, Box<dyn Error + Send + Sync>>> + Send>> + Send + Sync,
+    F: Fn(
+            Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<ToolResult, Box<dyn Error + Send + Sync>>>
+                    + Send,
+            >,
+        > + Send
+        + Sync,
 {
     /// Create a new simple tool from a function.
     pub fn new(function: F) -> Self {
@@ -126,7 +142,15 @@ where
 #[async_trait]
 impl<F> ToolFunction for SimpleTool<F>
 where
-    F: Fn(Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ToolResult, Box<dyn Error + Send + Sync>>> + Send>> + Send + Sync,
+    F: Fn(
+            Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<ToolResult, Box<dyn Error + Send + Sync>>>
+                    + Send,
+            >,
+        > + Send
+        + Sync,
 {
     async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn Error + Send + Sync>> {
         (self.function)(input).await
@@ -139,22 +163,22 @@ pub enum ToolError {
     /// Tool not found in registry.
     #[error("Tool '{name}' not found")]
     NotFound { name: String },
-    
+
     /// Tool validation failed.
     #[error("Tool validation failed: {message}")]
     ValidationFailed { message: String },
-    
+
     /// Tool execution failed.
     #[error("Tool execution failed: {source}")]
-    ExecutionFailed { 
+    ExecutionFailed {
         #[source]
-        source: Box<dyn Error + Send + Sync> 
+        source: Box<dyn Error + Send + Sync>,
     },
-    
+
     /// Tool execution timed out.
     #[error("Tool execution timed out after {seconds} seconds")]
     Timeout { seconds: u64 },
-    
+
     /// Tool registry error.
     #[error("Tool registry error: {message}")]
     RegistryError { message: String },
@@ -180,9 +204,7 @@ pub type ToolOperationResult<T> = Result<T, ToolError>;
 #[macro_export]
 macro_rules! tool_function {
     (|$input:ident: Value| $body:expr) => {
-        $crate::tools::SimpleTool::new(move |$input: Value| {
-            Box::pin($body)
-        })
+        $crate::tools::SimpleTool::new(move |$input: Value| Box::pin($body))
     };
 }
 
@@ -206,9 +228,9 @@ mod tests {
     async fn test_tool_function_execution() {
         let tool = TestTool;
         let input = json!({"message": "Hello, World!"});
-        
+
         let result = tool.execute(input).await.unwrap();
-        
+
         if let crate::types::ToolResultContent::Text(content) = result.content {
             assert_eq!(content, "Echo: Hello, World!");
         } else {
@@ -222,13 +244,16 @@ mod tests {
             Box::pin(async move {
                 let number = input["number"].as_f64().unwrap_or(0.0);
                 let result = number * 2.0;
-                Ok(ToolResult::success("test_id", format!("Result: {}", result)))
+                Ok(ToolResult::success(
+                    "test_id",
+                    format!("Result: {}", result),
+                ))
             })
         });
 
         let input = json!({"number": 21.0});
         let result = tool.execute(input).await.unwrap();
-        
+
         if let crate::types::ToolResultContent::Text(content) = result.content {
             assert_eq!(content, "Result: 42");
         } else {
@@ -240,10 +265,10 @@ mod tests {
     fn test_tool_function_macro() {
         let _tool = tool_function!(|input: Value| async move {
             let value = input["test"].as_str().unwrap_or("default");
-            Ok(ToolResult::success("macro_test", format!("Processed: {}", value)))
+            Ok(ToolResult::success(
+                "macro_test",
+                format!("Processed: {}", value),
+            ))
         });
-        
-        // Test compilation of the macro
-        assert!(true);
     }
-} 
+}
