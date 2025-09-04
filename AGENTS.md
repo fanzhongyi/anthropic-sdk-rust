@@ -456,4 +456,33 @@ while let Some(event) = rx.recv().await {
   - M2：提供 stream_with_callbacks 与 run_once；补充 with_response() 能力，统一暴露 request_id；根据需要引入 subscribe() 或沿用现有 broadcast 机制暴露统一事件流。
 
 - 影响评估
+
+---
+
+## Abort 取消语义与最小示例（2025-09-04）
+
+本次实现打通了 streaming 层的真实取消：
+- MessageStream::abort
+  - 仅发送一次取消信号（watch channel），并将本地状态置位：aborted=true、ended=true。
+  - 不再主动广播 MessageStop（避免语义混淆与重复终止）。
+  - 触发 on_abort 回调，并通过 AnthropicError::UserAbort 表达“用户中止”。
+- 后台任务（from_http_stream 内部）：
+  - 监听到 abort 信号后，设置 ended=true，并通过 completion_sender 发送 Err(UserAbort) 终止。
+- final_message()/done()
+  - 采用 tokio::select 同时等待事件与 completion_receiver，保证在中止后立即返回 UserAbort，不会因等待事件而悬挂。
+- Stream 语义
+  - 由于 ended=true，基于 futures::Stream 的消费也能尽快结束。
+
+最小复现示例：examples/streaming_abort_min.rs
+- 用法：
+  - cargo run --example streaming_abort_min
+  - 示例在 500ms 后调用 abort_handle.abort()，预期输出“Abort worked: received UserAbort”。
+- 关键点：
+  - 在开始消费流前取得 abort_handle。
+  - 调用 final_message() 会在中止后立刻返回 AnthropicError::UserAbort。
+
+注意事项：
+- 中止不会发送合成的 MessageStop 事件；如需感知中止，请使用 on_abort 或依赖 final_message()/done() 的返回值。
+- 若上层使用 while let Some(event) = stream.next().await 消费事件，建议同时监听 on_abort 或在业务逻辑中检查 stream.aborted()/ended() 来尽快退出。
+
   - 上层 Engine 中当前的 tool_input_buffers 与 "ContentBlockStop 再 parse" 路径可在迁移后下沉至 SDK 聚合层，减少重复状态机代码，调用方只需消费 ToolUseReady/FinalMessage 等高层事件。

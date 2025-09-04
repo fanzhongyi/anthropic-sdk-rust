@@ -20,7 +20,7 @@ use futures::Stream;
 use pin_project::pin_project;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::{broadcast, oneshot, watch};
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::types::{
@@ -109,6 +109,9 @@ pub struct MessageStream {
     completion_sender: Option<oneshot::Sender<Result<Message>>>,
     completion_receiver: oneshot::Receiver<Result<Message>>,
 
+    /// Abort signaling channel (cloneable handle)
+    abort_tx: Option<watch::Sender<bool>>,
+
     /// Whether the stream has ended
     ended: Arc<Mutex<bool>>,
 
@@ -142,6 +145,7 @@ impl MessageStream {
             ended: Arc::new(Mutex::new(false)),
             errored: Arc::new(Mutex::new(false)),
             aborted: Arc::new(Mutex::new(false)),
+            abort_tx: None,
             response: Some(response),
             request_id,
         }
@@ -160,6 +164,7 @@ impl MessageStream {
         let current_message = Arc::new(Mutex::new(None));
         let ended = Arc::new(Mutex::new(false));
         let errored = Arc::new(Mutex::new(false));
+        let aborted = Arc::new(Mutex::new(false));
         let tool_json_buffers = Arc::new(Mutex::new(HashMap::new()));
         let request_id = http_stream.request_id().map(|s| s.to_string());
 
@@ -167,233 +172,144 @@ impl MessageStream {
         let current_message_clone = current_message.clone();
         let ended_clone = ended.clone();
         let errored_clone = errored.clone();
+        let aborted_clone = aborted.clone();
         let tool_json_buffers_clone = tool_json_buffers.clone();
         let event_sender_clone = event_sender.clone();
+
+        // Create abort channel (cloneable sender)
+        let (abort_tx, abort_rx) = watch::channel(false);
 
         // Spawn task to process HTTP stream events
         tokio::spawn(async move {
             use futures::StreamExt;
             let mut final_message: Option<Message> = None;
             let mut completion_sender = Some(completion_sender); // Keep sender in Option
+            tokio::pin!(abort_rx);
 
-            while let Some(event_result) = http_stream.next().await {
-                match event_result {
-                    Ok(event) => {
-                        // Update current message state
-                        match &event {
-                            MessageStreamEvent::MessageStart { message } => {
-                                *current_message_clone.lock().unwrap() = Some(message.clone());
-                                final_message = Some(message.clone());
+            loop {
+                tokio::select! {
+                    _ = abort_rx.changed() => {
+                        if *abort_rx.borrow() {
+                            *aborted_clone.lock().unwrap() = true;
+                            *ended_clone.lock().unwrap() = true;
+                            if let Some(sender) = completion_sender.take() {
+                                let _ = sender.send(Err(AnthropicError::UserAbort));
                             }
-                            MessageStreamEvent::ContentBlockStart {
-                                content_block,
-                                index,
-                            } => {
-                                if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
-                                    while msg.content.len() <= *index {
-                                        msg.content.push(ContentBlock::Text {
-                                            text: String::new(),
-                                        });
-                                    }
-                                    msg.content[*index] = content_block.clone();
-                                }
-                                if let Some(ref mut msg) = final_message.as_mut() {
-                                    while msg.content.len() <= *index {
-                                        msg.content.push(ContentBlock::Text {
-                                            text: String::new(),
-                                        });
-                                    }
-                                    msg.content[*index] = content_block.clone();
-                                }
-                            }
-                            MessageStreamEvent::ContentBlockDelta { delta, index } => {
-                                if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
-                                    if let Some(content_block) = msg.content.get_mut(*index) {
-                                        match (content_block, delta) {
-                                            (
-                                                ContentBlock::Text { text },
-                                                ContentBlockDelta::TextDelta { text: delta_text },
-                                            ) => {
-                                                text.push_str(delta_text);
-                                            }
-                                            (
-                                                ContentBlock::ToolUse { input, id, .. },
-                                                ContentBlockDelta::InputJsonDelta { partial_json },
-                                            ) => {
-                                                // Accumulate partial JSON fragments properly
-                                                let buffer_key = (*index, id.clone());
-                                                let mut buffers =
-                                                    tool_json_buffers_clone.lock().unwrap();
-
-                                                // Append the partial_json to the accumulated buffer
-                                                let accumulated_json = buffers
-                                                    .entry(buffer_key)
-                                                    .or_insert_with(String::new);
-                                                accumulated_json.push_str(partial_json);
-
-                                                // Try to parse the accumulated JSON
-                                                if let Ok(parsed) =
-                                                    serde_json::from_str(accumulated_json)
-                                                {
-                                                    *input = parsed;
-                                                } else {
-                                                    // Keep the accumulated string as-is for now, will be parsed when complete
-                                                    *input = serde_json::Value::String(
-                                                        accumulated_json.clone(),
-                                                    );
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                                // Update final message with same logic
-                                if let Some(ref mut msg) = final_message.as_mut() {
-                                    if let Some(content_block) = msg.content.get_mut(*index) {
-                                        match (content_block, delta) {
-                                            (
-                                                ContentBlock::Text { text },
-                                                ContentBlockDelta::TextDelta { text: delta_text },
-                                            ) => {
-                                                text.push_str(delta_text);
-                                            }
-                                            (
-                                                ContentBlock::ToolUse { input, id, .. },
-                                                ContentBlockDelta::InputJsonDelta { partial_json },
-                                            ) => {
-                                                // Use the same buffer for final_message - get the accumulated JSON
-                                                let buffer_key = (*index, id.clone());
-                                                let buffers =
-                                                    tool_json_buffers_clone.lock().unwrap();
-
-                                                if let Some(accumulated_json) =
-                                                    buffers.get(&buffer_key)
-                                                {
-                                                    // Try to parse the accumulated JSON
-                                                    if let Ok(parsed) =
-                                                        serde_json::from_str(accumulated_json)
-                                                    {
-                                                        *input = parsed;
-                                                    } else {
-                                                        *input = serde_json::Value::String(
-                                                            accumulated_json.clone(),
-                                                        );
-                                                    }
-                                                } else {
-                                                    // Fallback: try parsing the current partial_json directly
-                                                    if let Ok(parsed) =
-                                                        serde_json::from_str(partial_json)
-                                                    {
-                                                        *input = parsed;
-                                                    } else {
-                                                        *input = serde_json::Value::String(
-                                                            partial_json.clone(),
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                            }
-                            MessageStreamEvent::MessageDelta { delta, usage } => {
-                                if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
-                                    if let Some(stop_reason) = &delta.stop_reason {
-                                        msg.stop_reason = Some(stop_reason.clone());
-                                    }
-                                    if let Some(stop_sequence) = &delta.stop_sequence {
-                                        msg.stop_sequence = Some(stop_sequence.clone());
-                                    }
-                                    msg.usage.output_tokens = usage.output_tokens;
-                                    if let Some(input_tokens) = usage.input_tokens {
-                                        msg.usage.input_tokens = input_tokens;
-                                    }
-                                    if let Some(cache_creation) = &usage.cache_creation {
-                                        msg.usage.cache_creation = Some(cache_creation.clone());
-                                    }
-                                    if let Some(cache_creation_tokens) =
-                                        usage.cache_creation_input_tokens
-                                    {
-                                        msg.usage.cache_creation_input_tokens =
-                                            Some(cache_creation_tokens);
-                                    }
-                                    if let Some(cache_read_tokens) = usage.cache_read_input_tokens {
-                                        msg.usage.cache_read_input_tokens = Some(cache_read_tokens);
-                                    }
-                                }
-                                if let Some(ref mut msg) = final_message.as_mut() {
-                                    if let Some(stop_reason) = &delta.stop_reason {
-                                        msg.stop_reason = Some(stop_reason.clone());
-                                    }
-                                    if let Some(stop_sequence) = &delta.stop_sequence {
-                                        msg.stop_sequence = Some(stop_sequence.clone());
-                                    }
-                                    msg.usage.output_tokens = usage.output_tokens;
-                                    if let Some(input_tokens) = usage.input_tokens {
-                                        msg.usage.input_tokens = input_tokens;
-                                    }
-                                    if let Some(cache_creation) = &usage.cache_creation {
-                                        msg.usage.cache_creation = Some(cache_creation.clone());
-                                    }
-                                    if let Some(cache_creation_tokens) =
-                                        usage.cache_creation_input_tokens
-                                    {
-                                        msg.usage.cache_creation_input_tokens =
-                                            Some(cache_creation_tokens);
-                                    }
-                                    if let Some(cache_read_tokens) = usage.cache_read_input_tokens {
-                                        msg.usage.cache_read_input_tokens = Some(cache_read_tokens);
-                                    }
-                                }
-                            }
-                            MessageStreamEvent::ContentBlockStop {
-                                index,
-                                content_block: Some(final_content_block),
-                            } => {
-                                // If the event contains a complete content_block, use it to update the final state
-                                if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
-                                    if let Some(existing_block) = msg.content.get_mut(*index) {
-                                        *existing_block = final_content_block.clone();
-                                    }
-                                }
-                                if let Some(ref mut msg) = final_message.as_mut() {
-                                    if let Some(existing_block) = msg.content.get_mut(*index) {
-                                        *existing_block = final_content_block.clone();
-                                    }
-                                }
-                            }
-                            MessageStreamEvent::MessageStop => {
-                                *ended_clone.lock().unwrap() = true;
-                                // Send the final message if we have a sender
-                                if let Some(sender) = completion_sender.take() {
-                                    if let Some(message) = final_message.clone() {
-                                        let _ = sender.send(Ok(message));
-                                    } else {
-                                        let _ = sender.send(Err(AnthropicError::StreamError(
-                                            "Stream ended without message".to_string(),
-                                        )));
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-
-                        // Send event to broadcast channel for all events (including MessageStop)
-                        let event_clone = event.clone();
-                        let send_result = event_sender_clone.send(event_clone);
-
-                        // Log MessageStop event specifically for debugging
-                        if matches!(event, MessageStreamEvent::MessageStop) {
-                            tracing::info!("Sent MessageStop event to broadcast channel, result: {send_result:?}");
+                            break;
                         }
                     }
-                    Err(e) => {
-                        *errored_clone.lock().unwrap() = true;
-                        if let Some(sender) = completion_sender.take() {
-                            let _ = sender.send(Err(e));
+                    event_opt = http_stream.next() => {
+                        match event_opt {
+                            Some(Ok(event)) => {
+                                // Update current message state
+                                match &event {
+                                    MessageStreamEvent::MessageStart { message } => {
+                                        *current_message_clone.lock().unwrap() = Some(message.clone());
+                                        final_message = Some(message.clone());
+                                    }
+                                    MessageStreamEvent::ContentBlockStart {
+                                        content_block,
+                                        index,
+                                    } => {
+                                        if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
+                                            while msg.content.len() <= *index {
+                                                msg.content.push(ContentBlock::Text { text: String::new() });
+                                            }
+                                            msg.content[*index] = content_block.clone();
+                                        }
+                                        if let Some(ref mut msg) = final_message.as_mut() {
+                                            while msg.content.len() <= *index {
+                                                msg.content.push(ContentBlock::Text { text: String::new() });
+                                            }
+                                            msg.content[*index] = content_block.clone();
+                                        }
+                                    }
+                                    MessageStreamEvent::ContentBlockDelta { delta, index } => {
+                                        if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
+                                            if let Some(content_block) = msg.content.get_mut(*index) {
+                                                match (content_block, delta) {
+                                                    (ContentBlock::Text { text }, ContentBlockDelta::TextDelta { text: delta_text }) => { text.push_str(delta_text); }
+                                                    (ContentBlock::ToolUse { input, id, .. }, ContentBlockDelta::InputJsonDelta { partial_json }) => {
+                                                        let buffer_key = (*index, id.clone());
+                                                        let mut buffers = tool_json_buffers_clone.lock().unwrap();
+                                                        let accumulated_json = buffers.entry(buffer_key).or_insert_with(String::new);
+                                                        accumulated_json.push_str(partial_json);
+                                                        if let Ok(parsed) = serde_json::from_str(accumulated_json) { *input = parsed; } else {
+                                                            *input = serde_json::Value::String(accumulated_json.clone());
+                                                        }
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
+                                        if let Some(ref mut msg) = final_message.as_mut() {
+                                            if let Some(content_block) = msg.content.get_mut(*index) {
+                                                match (content_block, delta) {
+                                                    (ContentBlock::Text { text }, ContentBlockDelta::TextDelta { text: delta_text }) => { text.push_str(delta_text); }
+                                                    (ContentBlock::ToolUse { input, id, .. }, ContentBlockDelta::InputJsonDelta { partial_json }) => {
+                                                        let buffer_key = (*index, id.clone());
+                                                        let buffers = tool_json_buffers_clone.lock().unwrap();
+                                                        if let Some(accumulated_json) = buffers.get(&buffer_key) {
+                                                            if let Ok(parsed) = serde_json::from_str(accumulated_json) { *input = parsed; } else { *input = serde_json::Value::String(accumulated_json.clone()); }
+                                                        } else if let Ok(parsed) = serde_json::from_str(partial_json) { *input = parsed; } else { *input = serde_json::Value::String(partial_json.clone()); }
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                    MessageStreamEvent::MessageDelta { delta, usage } => {
+                                        if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
+                                            if let Some(stop_reason) = &delta.stop_reason { msg.stop_reason = Some(stop_reason.clone()); }
+                                            if let Some(stop_sequence) = &delta.stop_sequence { msg.stop_sequence = Some(stop_sequence.clone()); }
+                                            msg.usage.output_tokens = usage.output_tokens;
+                                            if let Some(input_tokens) = usage.input_tokens { msg.usage.input_tokens = input_tokens; }
+                                            if let Some(cache_creation) = &usage.cache_creation { msg.usage.cache_creation = Some(cache_creation.clone()); }
+                                            if let Some(cache_creation_tokens) = usage.cache_creation_input_tokens { msg.usage.cache_creation_input_tokens = Some(cache_creation_tokens); }
+                                            if let Some(cache_read_tokens) = usage.cache_read_input_tokens { msg.usage.cache_read_input_tokens = Some(cache_read_tokens); }
+                                        }
+                                        if let Some(ref mut msg) = final_message.as_mut() {
+                                            if let Some(stop_reason) = &delta.stop_reason { msg.stop_reason = Some(stop_reason.clone()); }
+                                            if let Some(stop_sequence) = &delta.stop_sequence { msg.stop_sequence = Some(stop_sequence.clone()); }
+                                            msg.usage.output_tokens = usage.output_tokens;
+                                            if let Some(input_tokens) = usage.input_tokens { msg.usage.input_tokens = input_tokens; }
+                                            if let Some(cache_creation) = &usage.cache_creation { msg.usage.cache_creation = Some(cache_creation.clone()); }
+                                            if let Some(cache_creation_tokens) = usage.cache_creation_input_tokens { msg.usage.cache_creation_input_tokens = Some(cache_creation_tokens); }
+                                            if let Some(cache_read_tokens) = usage.cache_read_input_tokens { msg.usage.cache_read_input_tokens = Some(cache_read_tokens); }
+                                        }
+                                    }
+                                    MessageStreamEvent::ContentBlockStop { index, content_block: Some(final_content_block) } => {
+                                        if let Some(ref mut msg) = *current_message_clone.lock().unwrap() {
+                                            if let Some(existing_block) = msg.content.get_mut(*index) { *existing_block = final_content_block.clone(); }
+                                        }
+                                        if let Some(ref mut msg) = final_message.as_mut() {
+                                            if let Some(existing_block) = msg.content.get_mut(*index) { *existing_block = final_content_block.clone(); }
+                                        }
+                                    }
+                                    MessageStreamEvent::MessageStop => {
+                                        *ended_clone.lock().unwrap() = true;
+                                        if let Some(sender) = completion_sender.take() {
+                                            if let Some(message) = final_message.clone() { let _ = sender.send(Ok(message)); }
+                                            else { let _ = sender.send(Err(AnthropicError::StreamError("Stream ended without message".to_string()))); }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+
+                                // Send event to broadcast channel for all events (including MessageStop)
+                                let event_clone = event.clone();
+                                let send_result = event_sender_clone.send(event_clone);
+                                if matches!(event, MessageStreamEvent::MessageStop) {
+                                    tracing::info!("Sent MessageStop event to broadcast channel, result: {send_result:?}");
+                                }
+                            }
+                            Some(Err(e)) => {
+                                *errored_clone.lock().unwrap() = true;
+                                if let Some(sender) = completion_sender.take() { let _ = sender.send(Err(e)); }
+                                break;
+                            }
+                            None => break,
                         }
-                        break;
                     }
                 }
             }
@@ -409,7 +325,8 @@ impl MessageStream {
             completion_receiver,
             ended,
             errored,
-            aborted: Arc::new(Mutex::new(false)),
+            aborted,
+            abort_tx: Some(abort_tx),
             response: None, // No response needed for HTTP stream
             request_id,
         })
@@ -504,6 +421,16 @@ impl MessageStream {
                 }
             });
         })
+    }
+
+    /// Register a callback for stream abort.
+    ///
+    /// This allows you to observe user-triggered cancellation with a structured error.
+    pub fn on_abort<F>(self, callback: F) -> Self
+    where
+        F: Fn(&AnthropicError) + Send + Sync + 'static,
+    {
+        self.on(EventType::Abort, EventHandler::Abort(Box::new(callback)))
     }
 
     /// Register a callback for when a complete message is received.
@@ -732,28 +659,43 @@ impl MessageStream {
     pub async fn final_message(mut self) -> Result<Message> {
         use futures::StreamExt;
 
-        // Process events and trigger callbacks until completion
-        while let Some(event_result) = self.event_stream.next().await {
-            match event_result {
-                Ok(event) => {
-                    self.process_event_callbacks(&event).await;
-
-                    // Check if stream ended
-                    if matches!(event, MessageStreamEvent::MessageStop) {
-                        break;
-                    }
+        loop {
+            tokio::select! {
+                // Prioritize completion so aborts or early terminations resolve immediately
+                res = &mut self.completion_receiver => {
+                    break res.map_err(|_| AnthropicError::StreamError("Stream ended unexpectedly".to_string()))?;
                 }
-                Err(_) => {
-                    // Channel error, stream ended
-                    break;
+                event_result = self.event_stream.next() => {
+                    match event_result {
+                        Some(Ok(event)) => {
+                            self.process_event_callbacks(&event).await;
+                            if matches!(event, MessageStreamEvent::MessageStop) {
+                                // Background task will have sent the final message via completion_sender
+                                // Await it now to return the final Message
+                                let res = self.completion_receiver
+                                    .await
+                                    .map_err(|_| AnthropicError::StreamError("Stream ended unexpectedly".to_string()))?;
+                                break res;
+                            }
+                        }
+                        Some(Err(_)) => {
+                            // Fall back to completion receiver for the terminal result (Ok/Err)
+                            let res = self.completion_receiver
+                                .await
+                                .map_err(|_| AnthropicError::StreamError("Stream ended unexpectedly".to_string()))?;
+                            break res;
+                        }
+                        None => {
+                            // No more broadcast events; rely on completion receiver
+                            let res = self.completion_receiver
+                                .await
+                                .map_err(|_| AnthropicError::StreamError("Stream ended unexpectedly".to_string()))?;
+                            break res;
+                        }
+                    }
                 }
             }
         }
-
-        // Wait for final result
-        self.completion_receiver
-            .await
-            .map_err(|_| AnthropicError::StreamError("Stream ended unexpectedly".to_string()))?
     }
 
     /// Wait for the stream to complete without returning the message.
@@ -810,12 +752,37 @@ impl MessageStream {
         self.request_id.as_deref()
     }
 
+    /// Get a cloneable abort handle for cross-task cancellation.
+    pub fn abort_handle(&self) -> Option<MessageStreamAbortHandle> {
+        self.abort_tx
+            .as_ref()
+            .map(|tx| MessageStreamAbortHandle { tx: tx.clone() })
+    }
+
     /// Abort the stream.
     ///
-    /// This will cancel the underlying HTTP request and mark the stream as aborted.
+    /// This will signal the background streaming task to stop and mark the stream as aborted.
+    /// It does not emit a synthetic MessageStop; consumers should rely on `on_abort` or
+    /// awaiting `final_message()/done()` which will resolve with `AnthropicError::UserAbort`.
     pub fn abort(&self) {
+        // Mark local state as aborted/ended immediately so pollers can stop
         *self.aborted.lock().unwrap() = true;
-        // In a real implementation, this would cancel the HTTP request
+        *self.ended.lock().unwrap() = true;
+
+        // Signal the background task to stop
+        if let Some(tx) = &self.abort_tx {
+            let _ = tx.send(true);
+        }
+
+        // Fire Abort callbacks once with a standard error
+        let handlers = self.event_handlers.lock().unwrap();
+        if let Some(abort_handlers) = handlers.get(&EventType::Abort) {
+            for handler in abort_handlers {
+                if let EventHandler::Abort(cb) = handler {
+                    cb(&AnthropicError::UserAbort);
+                }
+            }
+        }
     }
 
     /// Process a stream event and update the internal state.
@@ -980,6 +947,31 @@ impl MessageStream {
             })
             .collect::<Vec<_>>()
             .join("")
+    }
+}
+
+/// Handle used to abort a MessageStream from another task.
+pub struct MessageStreamAbortHandle {
+    tx: watch::Sender<bool>,
+}
+
+impl MessageStreamAbortHandle {
+    pub fn abort(&self) {
+        let _ = self.tx.send(true);
+    }
+}
+
+impl Clone for MessageStreamAbortHandle {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+        }
+    }
+}
+
+impl std::fmt::Debug for MessageStreamAbortHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MessageStreamAbortHandle").finish()
     }
 }
 
