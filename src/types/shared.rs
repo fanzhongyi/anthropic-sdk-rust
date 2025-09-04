@@ -185,3 +185,38 @@ impl ThinkingConfig {
 pub trait HasRequestId {
     fn request_id(&self) -> Option<&RequestId>;
 }
+
+/// Standardized HTTP response metadata exposed by the SDK
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResponseMeta {
+    pub status: u16,
+    pub headers: reqwest::header::HeaderMap,
+    pub request_id: Option<RequestId>,
+}
+
+impl ResponseMeta {
+    pub fn new(
+        status: u16,
+        headers: reqwest::header::HeaderMap,
+        request_id: Option<RequestId>,
+    ) -> Self {
+        Self {
+            status,
+            headers,
+            request_id,
+        }
+    }
+}
+
+/// Envelope that carries business data alongside response metadata
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResponseEnvelope<T> {
+    pub data: T,
+    pub response: ResponseMeta,
+}
+
+impl<T> ResponseEnvelope<T> {
+    pub fn new(data: T, response: ResponseMeta) -> Self {
+        Self { data, response }
+    }
+}

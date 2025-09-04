@@ -60,6 +60,12 @@ pub struct HttpStreamClient {
     /// Whether the stream has ended
     ended: bool,
 
+    /// HTTP status code of the initial response
+    status: u16,
+
+    /// All response headers of the initial response
+    headers: reqwest::header::HeaderMap,
+
     /// Request ID from response headers
     request_id: Option<String>,
 }
@@ -70,11 +76,11 @@ impl HttpStreamClient {
     /// This method takes a reqwest Response (which should be from a streaming endpoint)
     /// and converts it into a stream of MessageStreamEvent objects.
     pub async fn from_response(response: Response, config: StreamConfig) -> Result<Self> {
-        let request_id = response
-            .headers()
-            .get("request-id")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
+        // Capture response metadata before consuming the body
+        let status = response.status().as_u16();
+        let headers = response.headers().clone();
+        let request_id = crate::http::client::HttpClient::extract_request_id_from_headers(&headers)
+            .map(|rid| rid.as_str().to_string());
 
         // Create the event channel
         let (event_sender, _) = broadcast::channel(config.buffer_size);
@@ -87,6 +93,8 @@ impl HttpStreamClient {
             event_sender,
             config,
             ended: false,
+            status,
+            headers,
             request_id,
         })
     }
@@ -307,6 +315,16 @@ impl HttpStreamClient {
             });
 
         Ok(sse_stream)
+    }
+
+    /// Get the HTTP status code of the initial response.
+    pub fn status(&self) -> u16 {
+        self.status
+    }
+
+    /// Get all response headers of the initial response.
+    pub fn headers(&self) -> &reqwest::header::HeaderMap {
+        &self.headers
     }
 
     /// Get the request ID from the response headers.

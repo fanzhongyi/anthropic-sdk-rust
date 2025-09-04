@@ -3,6 +3,7 @@ use crate::http::streaming::{StreamConfig, StreamRequestBuilder};
 use crate::streaming::MessageStream;
 use crate::types::errors::{AnthropicError, Result};
 use crate::types::messages::*;
+use crate::types::{ResponseEnvelope, ResponseMeta};
 
 /// Messages API resource for interacting with Claude
 pub struct MessagesResource<'a> {
@@ -78,6 +79,49 @@ impl<'a> MessagesResource<'a> {
         Ok(message)
     }
 
+    /// Create a message and return with response metadata envelope
+    pub async fn create_with_response(
+        &self,
+        params: MessageCreateParams,
+    ) -> Result<ResponseEnvelope<Message>> {
+        let url = self.client.http_client().build_url("/v1/messages");
+
+        let mut request_builder = self
+            .client
+            .http_client()
+            .post(&url)
+            .header("anthropic-version", "2023-06-01")
+            .json(&params);
+
+        if params.thinking.is_some() {
+            request_builder =
+                request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+        }
+
+        let request = request_builder
+            .build()
+            .map_err(|e| AnthropicError::Connection {
+                message: e.to_string(),
+            })?;
+
+        let response = self.client.http_client().send(request).await?;
+        let status = response.status().as_u16();
+        let headers = response.headers().clone();
+        let request_id = self.client.http_client().extract_request_id(&response);
+
+        let mut message: Message =
+            response
+                .json()
+                .await
+                .map_err(|e| AnthropicError::Connection {
+                    message: e.to_string(),
+                })?;
+        message.request_id = request_id.clone();
+
+        let meta = ResponseMeta::new(status, headers, request_id);
+        Ok(ResponseEnvelope::new(message, meta))
+    }
+
     /// Create a streaming message with Claude
     ///
     /// Send a message request and receive a real-time stream of the response.
@@ -139,6 +183,50 @@ impl<'a> MessagesResource<'a> {
         let message_stream = MessageStream::from_http_stream(http_stream)?;
 
         Ok(message_stream)
+    }
+
+    /// Create a streaming message with response metadata envelope
+    pub async fn create_stream_with_response(
+        &self,
+        mut params: MessageCreateParams,
+    ) -> Result<ResponseEnvelope<MessageStream>> {
+        // Ensure streaming is enabled
+        params.stream = Some(true);
+
+        // Create authorization header - use Bearer for most cases including custom gateways
+        let auth_header = format!("Bearer {}", self.client.config().api_key);
+
+        // Build the streaming request with proper authentication and beta headers
+        let mut stream_builder = StreamRequestBuilder::new(
+            self.client.http_client().client().clone(),
+            self.client.config().base_url.clone(),
+        )
+        .header("Authorization", &auth_header)
+        .header("Content-Type", "application/json")
+        .header("anthropic-version", "2023-06-01")
+        .config(StreamConfig::default());
+
+        // Check if thinking is enabled and add beta header
+        if params.thinking.is_some() {
+            stream_builder =
+                stream_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+        }
+
+        // Make the streaming request to get the real HTTP stream
+        let http_stream = stream_builder.post_stream("v1/messages", &params).await?;
+
+        // Build response metadata from the HTTP stream
+        let status = http_stream.status();
+        let headers = http_stream.headers().clone();
+        let request_id = http_stream
+            .request_id()
+            .map(|s| crate::types::RequestId::new(s.to_string()));
+
+        // Create MessageStream that processes the real HTTP stream events
+        let stream = MessageStream::from_http_stream(http_stream)?;
+
+        let meta = ResponseMeta::new(status, headers, request_id);
+        Ok(ResponseEnvelope::new(stream, meta))
     }
 
     /// Create a streaming message using the builder pattern

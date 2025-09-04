@@ -121,11 +121,28 @@ impl HttpClient {
 
     /// Extract request ID from response headers
     pub fn extract_request_id(&self, response: &Response) -> Option<RequestId> {
-        response
-            .headers()
-            .get("request-id")
-            .and_then(|value| value.to_str().ok())
-            .map(|id| RequestId::new(id.to_string()))
+        Self::extract_request_id_from_headers(response.headers())
+    }
+
+    /// Extract request ID from a header map (common variants supported)
+    pub fn extract_request_id_from_headers(
+        headers: &reqwest::header::HeaderMap,
+    ) -> Option<RequestId> {
+        const CANDIDATES: [&str; 5] = [
+            "request-id",
+            "x-request-id",
+            "anthropic-request-id",
+            "x-compass-request-id",
+            "request_id",
+        ];
+        for key in CANDIDATES {
+            if let Some(value) = headers.get(key) {
+                if let Ok(s) = value.to_str() {
+                    return Some(RequestId::new(s.to_string()));
+                }
+            }
+        }
+        None
     }
 
     /// Get the base URL

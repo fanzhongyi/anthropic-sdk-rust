@@ -114,6 +114,8 @@ pub use types::{
     QualityLevel,
     RecommendedParameters,
     RequestId,
+    ResponseEnvelope,
+    ResponseMeta,
     Result,
     Role,
     ServerTool,

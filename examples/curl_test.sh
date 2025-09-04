@@ -1,6 +1,6 @@
 #!/bin/bash
 
-curl -X POST "${ANTHROPIC_BASE_URL}/v1/messages" \
+curl -i -X POST "${ANTHROPIC_BASE_URL}/v1/messages" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ANTHROPIC_API_KEY}" \
   -H "anthropic-version: 2023-06-01" \
@@ -44,4 +44,3 @@ curl -X POST "${ANTHROPIC_BASE_URL}/v1/messages" \
       }
     ]
   }' --no-buffer
-

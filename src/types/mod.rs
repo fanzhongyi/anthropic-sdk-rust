@@ -10,7 +10,10 @@ pub mod tools;
 
 // Re-exports for convenience
 pub use errors::{AnthropicError, Result};
-pub use shared::{CacheControl, HasRequestId, RequestId, ServerToolUsage, ThinkingConfig, Usage};
+pub use shared::{
+    CacheControl, HasRequestId, RequestId, ResponseEnvelope, ResponseMeta, ServerToolUsage,
+    ThinkingConfig, Usage,
+};
 
 // Message types
 pub use messages::{
