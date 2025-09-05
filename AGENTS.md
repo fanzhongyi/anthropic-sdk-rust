@@ -143,6 +143,7 @@
 - 已进行的清理（摘要）：
   - 使用 strip_prefix、更新 base64 标准 API、实现 ModelPricing 的 Default 等以消除 Clippy 警告
   - streaming/events 类型复杂度优化（类型别名与枚举），多处示例未用变量下划线处理
+  - ModelPricing 定价表与别名对齐官方页面：补充 1h cache write 定价；新增别名 claude-3-5-sonnet@20241022、claude-3-opus@20240229；构建通过（cargo build），Clippy 出现 unknown lint 警告但不影响编译
 
 - 建议的后续方向：
   - tools、types 模块中的个别 Clippy 建议（new_ret_no_self、布尔模式简化、clamp 等）
@@ -202,60 +203,43 @@
   - 不在此阶段引入新的后端 Provider（可在后续“Provider 抽象”里程碑推进）。
 
 里程碑与交付
-- M1：聚合流基础（高优先级）
-  - messages().stream_aggregated(...)：
-    - 输出 AggregatedEvent 序列（TextDelta、ToolUseDelta(partial)、ToolUseReady{id,name,input: Value}、UsageDelta、MessageStop）。
-    - 在 SDK 内用哈希表按 content_block index 缓存 partial_json，ContentBlockStop 时一次性 parse 为 Value。
-    - 提供 declare_tools_from(view) 或 from_registry_view(view) 便捷函数，从 ToolRegistryView 直接生成 Tool 列表。
+- M1：提供事件回调函数(代替高阶流式对象)，从而简化上层应用的适配工作（高优先级）
+  - 提供 declare_tools_from(view) 或 from_registry_view(view) 便捷函数，从 ToolRegistryView 直接生成 Tool 列表。
   - 上层适配：为 Engine 侧提供一个薄适配（可选），以消费 ToolUseReady 事件；清理引擎内 tool_input_buffers 代码路径。
-  - 测试：协议无 snapshot 下工具输入正确性；多 ToolUse 顺序与内容一致性；只读并发策略不受影响。
+  - 测试：工具输入正确性；多 ToolUse 顺序与内容一致性；只读并发策略不受影响。
 
 - M2：高阶接口与回调（中优先级）
   - 新增：
     - run_once(prompt, tools, opts) -> RunTurn { assistant_blocks, tool_uses: Vec<ToolUse>, usage }。
     - stream_with_callbacks(builder, Callbacks { on_text, on_tool_use_ready, on_usage })：工具可用即触发回调。
-  - 可选：在聚合流中加入“早触发”钩子，使上层更容易实现就绪即调度（保持并发策略不变）。
+  - 加入“早触发”钩子，使上层更容易实现就绪即调度（保持并发策略不变）。
   - 文档：示例对齐 TS 调用体验（少参数 + 约定优于配置）。
 
 - M3：错误模型与观测（中优先级）
   - 统一 SDK 错误类型（Network/Timeout/Http/Parse/Aborted），减少上层分散处理底层细节。
-  - 在聚合流与高阶接口内打 span 与关键指标（请求耗时、字节大小、状态码分布、工具就绪数量）。
+  - 在接口内打 span 与关键指标（请求耗时、字节大小、状态码分布、工具就绪数量）。
 
 - M4：兼容与迁移收尾（低优先级）
-  - 保留旧路径的 feature gate（如 RUST_SDK_AGGREGATED=1 时启用新聚合流）。
   - 完成主要路径迁移后，清理旧的 messages().stream(...) 低层拼装路径。
 
 API 草案（示意）
-- 聚合事件：
-  - enum AggregatedEvent {
-      TextDelta { text: String, is_final: bool },
-      ToolUseDelta { index: usize, partial: String },
-      ToolUseReady { index: usize, id: String, name: String, input: serde_json::Value },
-      UsageDelta { usage: MessageDeltaUsage },
-      MessageStop,
-    }
 - 新接口：
-  - messages().stream_aggregated(builder) -> impl Stream<Item = Result<AggregatedEvent, SdkError>>
   - messages().run_once(prompt, tools, opts) -> Result<RunTurn, SdkError>
   - messages().stream_with_callbacks(builder, Callbacks { on_text, on_tool_use_ready, on_usage })
 - 工具声明辅助：
   - declare_tools_from(view: &ToolRegistryView) -> Vec<Tool>
 
 兼容与开关
-- 在高速迭代阶段不承诺长期保留旧的 messages().stream(...) 低层接口；短期内可通过 env/feature 开关选择聚合路径以便迁移，后续可能移除旧路径。
 - 协议未来变更（如新增事件类型/字段）优先在 SDK 内适配，上层引擎免于跟进细节。
 
 风险与回滚
 - 风险：聚合状态机正确性、乱序/并发事件处理、跨版本兼容。
 - 缓解：
-  - 保留旧接口与上层旧实现路径的开关，双轨运行一段时间。
   - 添加端到端集成测试（多 ToolUse、不同并发策略、长文档、错误路径）。
   - 强化 tracing 与指标，便于回溯与性能分析。
-- 回滚：关闭聚合流开关，上层回退到现有低层事件路径。
 
 预期收益
 - 上层引擎代码显著收敛到“策略与编排”，协议细节封装在 SDK。
-- 适配协议变更成本降低（主要聚焦 SDK），与 TS 官方 SDK 体验更趋一致。
 - 更好的可测试性与可观测性，为后续“早触发”与“Provider 抽象”铺路。
 
 
@@ -428,61 +412,5 @@ while let Some(event) = rx.recv().await {
 - 如需增量更新，请在相应章节中补充或修正，不建议在非结构化区域添加过多细节以免失真。
 
 ---
-
-## 改造计划进度更新（2025-09-03）
-
-本次扫描范围与依据：src/streaming/mod.rs、src/resources/messages.rs、src/http/streaming.rs、src/types/*、examples/*。
-
-- 已完成/可用
-  - MessageStream 高阶对象：提供 on_text/on_stream_event/on_message/on_final_message/done/final_message/ended/errored/aborted 等便捷能力；实现 futures::Stream<Item = Result<MessageStreamEvent>> 语义。
-  - 工具输入增量聚合：MessageStream::from_http_stream 内按 (index, id) 缓冲 partial_json，尝试 serde_json::from_str 聚合；在 ContentBlockStop 搭配最终块覆盖，形成“就绪可用”的 ToolUse.input 快照。
-  - 工具就绪回调：on_tool_ready 与 on_tool_ready_execute 已实现，解析到完整 ToolUse 后立即触发，可即时并行执行工具并回传结果。
-  - Beta/Thinking：当请求包含 thinking 配置时自动注入 anthropic-beta: interleaved-thinking-2025-05-14 头，满足扩展思维场景。
-  - MessagesResource.create_stream/stream：走 HTTP 流（SSE）并产出 MessageStream，示例与测试可用。
-
-- 部分完成
-  - 取消/Abort：MessageStream.abort() 目前为占位（未真正取消底层 HTTP 流），注释提示“真实实现应取消 HTTP 请求”。
-  - request_id：from_http_stream 能获得并存储 request_id，但尚无对齐 TS 的 with_response() 风格接口统一返回 { stream/runner, response, request_id }。
-
-- 尚未实现（与计划差距）
-  - 聚合流接口与事件：messages().stream_aggregated(...) 与 AggregatedEvent 类型。
-  - 高阶 Runner：MessageStreamRunner（统一 subscribe()/with_response()/abort 取消到底层）。
-  - 便捷接口：run_once、stream_with_callbacks（on_text/on_tool_use_ready/on_usage）。
-  - 工具声明辅助：declare_tools_from(view)/from_registry_view(view)。
-  - 统一错误模型与指标：Network/Timeout/Http/Parse/Aborted 分类与关键指标埋点（TTFT、耗时、字节大小、工具就绪数量等）。
-
-- 建议的下一步（对齐 M1/M2）
-  - M1：在现有 MessageStream 之上提供 messages().stream_aggregated(...)，在 SDK 内完成 ToolUse 输入聚合并发出 ToolUseReady；补充 examples/stream_aggregated.rs；打通 abort 到 HTTP 层。
-  - M2：提供 stream_with_callbacks 与 run_once；补充 with_response() 能力，统一暴露 request_id；根据需要引入 subscribe() 或沿用现有 broadcast 机制暴露统一事件流。
-
-- 影响评估
-
----
-
-## Abort 取消语义与最小示例（2025-09-04）
-
-本次实现打通了 streaming 层的真实取消：
-- MessageStream::abort
-  - 仅发送一次取消信号（watch channel），并将本地状态置位：aborted=true、ended=true。
-  - 不再主动广播 MessageStop（避免语义混淆与重复终止）。
-  - 触发 on_abort 回调，并通过 AnthropicError::UserAbort 表达“用户中止”。
-- 后台任务（from_http_stream 内部）：
-  - 监听到 abort 信号后，设置 ended=true，并通过 completion_sender 发送 Err(UserAbort) 终止。
-- final_message()/done()
-  - 采用 tokio::select 同时等待事件与 completion_receiver，保证在中止后立即返回 UserAbort，不会因等待事件而悬挂。
-- Stream 语义
-  - 由于 ended=true，基于 futures::Stream 的消费也能尽快结束。
-
-最小复现示例：examples/streaming_abort_min.rs
-- 用法：
-  - cargo run --example streaming_abort_min
-  - 示例在 500ms 后调用 abort_handle.abort()，预期输出“Abort worked: received UserAbort”。
-- 关键点：
-  - 在开始消费流前取得 abort_handle。
-  - 调用 final_message() 会在中止后立刻返回 AnthropicError::UserAbort。
-
-注意事项：
-- 中止不会发送合成的 MessageStop 事件；如需感知中止，请使用 on_abort 或依赖 final_message()/done() 的返回值。
-- 若上层使用 while let Some(event) = stream.next().await 消费事件，建议同时监听 on_abort 或在业务逻辑中检查 stream.aborted()/ended() 来尽快退出。
 
   - 上层 Engine 中当前的 tool_input_buffers 与 "ContentBlockStop 再 parse" 路径可在迁移后下沉至 SDK 聚合层，减少重复状态机代码，调用方只需消费 ToolUseReady/FinalMessage 等高层事件。

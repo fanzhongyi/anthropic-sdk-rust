@@ -83,14 +83,16 @@ pub struct ModelPricing {
 /// Pricing for a specific model
 #[derive(Debug, Clone)]
 pub struct ModelPrice {
-    /// Cost per 1M input tokens in USD
+    /// Cost per 1M input tokens in USD (Base Input Tokens)
     pub input_cost_per_million: f64,
-    /// Cost per 1M output tokens in USD
+    /// Cost per 1M output tokens in USD (Output Tokens)
     pub output_cost_per_million: f64,
-    /// Cost per 1M cache read tokens in USD (if applicable)
+    /// Cost per 1M cache read tokens in USD (Cache Hits & Refreshes)
     pub cache_read_cost_per_million: Option<f64>,
-    /// Cost per 1M cache write tokens in USD (if applicable)
+    /// Cost per 1M 5-minute cache writes in USD (5m Cache Writes)
     pub cache_write_cost_per_million: Option<f64>,
+    /// Cost per 1M 1-hour cache writes in USD (1h Cache Writes)
+    pub cache_write_1h_cost_per_million: Option<f64>,
 }
 
 /// Cost breakdown for detailed analysis
@@ -182,21 +184,46 @@ impl TokenCounter {
             (usage.output_tokens as f64 / 1_000_000.0) * price.output_cost_per_million;
 
         let cache_read_tokens = usage.cache_read_input_tokens.unwrap_or(0);
-        let cache_write_tokens = usage.cache_creation_input_tokens.unwrap_or(0);
+        // Split cache writes into 5m and 1h buckets when available; fallback to 5m for legacy field
+        let (cache_write_5m_tokens, cache_write_1h_tokens) = if let Some(cc) = &usage.cache_creation
+        {
+            (
+                cc.ephemeral_5m_input_tokens.unwrap_or(0),
+                cc.ephemeral_1h_input_tokens.unwrap_or(0),
+            )
+        } else {
+            (usage.cache_creation_input_tokens.unwrap_or(0), 0)
+        };
 
         let cache_read_cost = price
             .cache_read_cost_per_million
             .map(|rate| (cache_read_tokens as f64 / 1_000_000.0) * rate)
             .unwrap_or(0.0);
 
-        let cache_write_cost = price
+        // Compute cache write costs for 5m and 1h buckets
+        let cache_write_5m_cost = price
             .cache_write_cost_per_million
-            .map(|rate| (cache_write_tokens as f64 / 1_000_000.0) * rate)
+            .map(|rate| (cache_write_5m_tokens as f64 / 1_000_000.0) * rate)
             .unwrap_or(0.0);
 
+        let cache_write_1h_cost = if let Some(rate) = price.cache_write_1h_cost_per_million {
+            (cache_write_1h_tokens as f64 / 1_000_000.0) * rate
+        } else {
+            // Fallback to 5m rate if 1h is not provided
+            price
+                .cache_write_cost_per_million
+                .map(|rate| (cache_write_1h_tokens as f64 / 1_000_000.0) * rate)
+                .unwrap_or(0.0)
+        };
+
+        let cache_write_cost = cache_write_5m_cost + cache_write_1h_cost;
+
         let total_cost = input_cost + output_cost + cache_read_cost + cache_write_cost;
-        let total_tokens =
-            usage.input_tokens + usage.output_tokens + cache_read_tokens + cache_write_tokens;
+        let total_tokens = usage.input_tokens
+            + usage.output_tokens
+            + cache_read_tokens
+            + cache_write_5m_tokens
+            + cache_write_1h_tokens;
         let cost_per_token = if total_tokens > 0 {
             total_cost / total_tokens as f64
         } else {
@@ -336,40 +363,78 @@ impl Default for ModelPricing {
     fn default() -> Self {
         let mut pricing_table = HashMap::new();
 
-        // Claude 3.5 Sonnet (latest)
-        pricing_table.insert(
-            "claude-3-5-sonnet-latest".to_string(),
-            ModelPrice {
-                input_cost_per_million: 3.00,
-                output_cost_per_million: 15.00,
-                cache_read_cost_per_million: Some(0.30),
-                cache_write_cost_per_million: Some(3.75),
-            },
-        );
+        // Claude Sonnet 4 (20250514) and aliases
+        let sonnet4 = ModelPrice {
+            input_cost_per_million: 3.00,
+            output_cost_per_million: 15.00,
+            cache_read_cost_per_million: Some(0.30), // cache hits & refreshes
+            cache_write_cost_per_million: Some(3.75), // 5m cache writes (default)
+            cache_write_1h_cost_per_million: Some(6.00), // 1h cache writes
+        };
+        pricing_table.insert("claude-sonnet-4-20250514".to_string(), sonnet4.clone());
+        pricing_table.insert("claude-sonnet-4-0".to_string(), sonnet4.clone());
+        pricing_table.insert("claude-sonnet-4@20250514".to_string(), sonnet4.clone());
 
-        // Claude 3.5 Sonnet (20241022)
-        pricing_table.insert(
-            "claude-3-5-sonnet-20241022".to_string(),
-            ModelPrice {
-                input_cost_per_million: 3.00,
-                output_cost_per_million: 15.00,
-                cache_read_cost_per_million: Some(0.30),
-                cache_write_cost_per_million: Some(3.75),
-            },
-        );
+        // Claude Sonnet 3.7 (20250219) and alias
+        let sonnet37 = ModelPrice {
+            input_cost_per_million: 3.00,
+            output_cost_per_million: 15.00,
+            cache_read_cost_per_million: Some(0.30),
+            cache_write_cost_per_million: Some(3.75),
+            cache_write_1h_cost_per_million: Some(6.00),
+        };
+        pricing_table.insert("claude-3-7-sonnet-20250219".to_string(), sonnet37.clone());
+        pricing_table.insert("claude-3-7-sonnet-latest".to_string(), sonnet37.clone());
+        pricing_table.insert("claude-3-7-sonnet@20250219".to_string(), sonnet37.clone());
 
-        // Claude 3.5 Haiku (latest)
-        pricing_table.insert(
-            "claude-3-5-haiku-latest".to_string(),
-            ModelPrice {
-                input_cost_per_million: 1.00,
-                output_cost_per_million: 5.00,
-                cache_read_cost_per_million: Some(0.10),
-                cache_write_cost_per_million: Some(1.25),
-            },
-        );
+        // Claude Haiku 3.5 (20241022) and aliases
+        let haiku35 = ModelPrice {
+            input_cost_per_million: 0.80,
+            output_cost_per_million: 4.00,
+            cache_read_cost_per_million: Some(0.08),
+            cache_write_cost_per_million: Some(1.00), // 5m writes
+            cache_write_1h_cost_per_million: Some(1.60), // 1h writes
+        };
+        pricing_table.insert("claude-3-5-haiku-20241022".to_string(), haiku35.clone());
+        pricing_table.insert("claude-3-5-haiku-latest".to_string(), haiku35.clone());
+        pricing_table.insert("claude-3-5-haiku@20241022".to_string(), haiku35.clone());
 
-        // Claude 3 Opus
+        // Claude Haiku 3 (20240307)
+        let haiku3 = ModelPrice {
+            input_cost_per_million: 0.25,
+            output_cost_per_million: 1.25,
+            cache_read_cost_per_million: Some(0.03),
+            cache_write_cost_per_million: Some(0.30), // 5m writes
+            cache_write_1h_cost_per_million: Some(0.50), // 1h writes
+        };
+        pricing_table.insert("claude-3-haiku-20240307".to_string(), haiku3.clone());
+        pricing_table.insert("claude-3-haiku@20240307".to_string(), haiku3);
+
+        // Claude Opus 4 (20250514) and aliases
+        let opus4 = ModelPrice {
+            input_cost_per_million: 15.00,
+            output_cost_per_million: 75.00,
+            cache_read_cost_per_million: Some(1.50),
+            cache_write_cost_per_million: Some(18.75),
+            cache_write_1h_cost_per_million: Some(30.00),
+        };
+        pricing_table.insert("claude-opus-4-20250514".to_string(), opus4.clone());
+        pricing_table.insert("claude-opus-4-0".to_string(), opus4.clone());
+        pricing_table.insert("claude-opus-4@20250514".to_string(), opus4.clone());
+
+        // Claude Opus 4.1 (20250805) and alias
+        let opus41 = ModelPrice {
+            input_cost_per_million: 15.00,
+            output_cost_per_million: 75.00,
+            cache_read_cost_per_million: Some(1.50),
+            cache_write_cost_per_million: Some(18.75),
+            cache_write_1h_cost_per_million: Some(30.00),
+        };
+        pricing_table.insert("claude-opus-4-1-20250805".to_string(), opus41.clone());
+        pricing_table.insert("claude-opus-4-1".to_string(), opus41.clone());
+        pricing_table.insert("claude-opus-4-1@20250805".to_string(), opus41);
+
+        // Claude 3 Opus (20240229)
         pricing_table.insert(
             "claude-3-opus-20240229".to_string(),
             ModelPrice {
@@ -377,8 +442,31 @@ impl Default for ModelPricing {
                 output_cost_per_million: 75.00,
                 cache_read_cost_per_million: Some(1.50),
                 cache_write_cost_per_million: Some(18.75),
+                cache_write_1h_cost_per_million: Some(30.00),
             },
         );
+        pricing_table.insert(
+            "claude-3-opus@20240229".to_string(),
+            ModelPrice {
+                input_cost_per_million: 15.00,
+                output_cost_per_million: 75.00,
+                cache_read_cost_per_million: Some(1.50),
+                cache_write_cost_per_million: Some(18.75),
+                cache_write_1h_cost_per_million: Some(30.00),
+            },
+        );
+
+        // Legacy: Claude 3.5 Sonnet (kept for compatibility)
+        let sonnet35 = ModelPrice {
+            input_cost_per_million: 3.00,
+            output_cost_per_million: 15.00,
+            cache_read_cost_per_million: Some(0.30),
+            cache_write_cost_per_million: Some(3.75),
+            cache_write_1h_cost_per_million: Some(6.00),
+        };
+        pricing_table.insert("claude-3-5-sonnet-latest".to_string(), sonnet35.clone());
+        pricing_table.insert("claude-3-5-sonnet-20241022".to_string(), sonnet35.clone());
+        pricing_table.insert("claude-3-5-sonnet@20241022".to_string(), sonnet35);
 
         Self { pricing_table }
     }
@@ -388,8 +476,10 @@ impl ModelPricing {
     /// Get pricing for a model
     pub fn get_price(&self, model: &str) -> &ModelPrice {
         self.pricing_table.get(model).unwrap_or_else(|| {
-            // Default to Claude 3.5 Sonnet pricing for unknown models
-            self.pricing_table.get("claude-3-5-sonnet-latest").unwrap()
+            // Default to Claude Sonnet 4 pricing for unknown models
+            self.pricing_table
+                .get("claude-sonnet-4-20250514")
+                .expect("Sonnet 4 pricing must exist")
         })
     }
 
