@@ -17,13 +17,6 @@ repos:
       - id: black
   - repo: local
     hooks:
-      - id: cargo-fmt
-        name: cargo fmt
-        description: Format files with rustfmt.
-        entry: bash -c 'cargo fmt --'
-        language: rust
-        files: \.rs$
-        args: []
       # - id: cargo-deny
       #   name: cargo deny check
       #   description: Check cargo dependencies
@@ -48,10 +41,17 @@ repos:
       - id: cargo-clippy
         name: cargo clippy
         description: Lint rust sources
-        entry: bash -c 'cargo clippy --all-targets --all-features --tests --benches --fix --allow-dirty -- -D warnings -A dead_code -A unused_variables -A unnameable-test-items'
+        entry: bash -c 'cargo clippy --all-targets --all-features --tests --benches --fix --allow-dirty'
         language: rust
         files: \.rs$
         pass_filenames: false
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Format files with rustfmt.
+        entry: bash -c 'cargo fmt --'
+        language: rust
+        files: \.rs$
+        args: []
       - id: cargo-test
         name: cargo test
         description: unit test for the project

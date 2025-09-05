@@ -184,7 +184,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Execute the tools
     for (id, name, input) in tool_calls {
-        println!("🔧 Executing tool '{}' with input: {}", name, input);
+        println!("🔧 Executing tool '{name}' with input: {input}");
 
         let tool_use = anthropic_sdk::ToolUse { id, name, input };
         match registry.execute(&tool_use).await {

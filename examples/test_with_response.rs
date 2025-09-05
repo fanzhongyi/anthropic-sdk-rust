@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     let stream = stream_env.data.on_text(|delta, _| {
-        print!("{}", delta);
+        print!("{delta}");
     });
 
     let final_msg = stream.final_message().await?;

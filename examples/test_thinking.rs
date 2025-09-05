@@ -155,7 +155,7 @@ async fn test_streaming_thinking(client: &Anthropic) -> Result<(), Box<dyn Error
                     }
                     MessageStreamEvent::Thinking { thinking } => {
                         thinking_events += 1;
-                        println!("thinking event: {}", thinking);
+                        println!("thinking event: {thinking}");
                     }
                     MessageStreamEvent::Signature { signature } => {
                         signature_events += 1;
@@ -163,10 +163,10 @@ async fn test_streaming_thinking(client: &Anthropic) -> Result<(), Box<dyn Error
                     }
                     MessageStreamEvent::Text { text } => {
                         text_events += 1;
-                        println!("text event: {}", text);
+                        println!("text event: {text}");
                     }
                     MessageStreamEvent::InputJson { partial_json } => {
-                        println!("input_json: {}", partial_json);
+                        println!("input_json: {partial_json}");
                     }
                     MessageStreamEvent::MessageDelta { .. } => {
                         println!("message_delta");

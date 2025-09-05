@@ -83,7 +83,7 @@ async fn demonstrate_conversation() -> Result<()> {
     println!("      Total messages: {}", params.messages.len());
     println!(
         "      System prompt: {:?}",
-        params.system.as_ref().map(|s| format!("{:?}", s))
+        params.system.as_ref().map(|s| format!("{s:?}"))
     );
     println!("      Temperature: {:?}", params.temperature);
 
@@ -186,7 +186,7 @@ async fn demonstrate_models() -> Result<()> {
     ];
 
     for model in models {
-        println!("   🤖 Model: {}", model);
+        println!("   🤖 Model: {model}");
         println!("      Family: {}", model.family());
         println!("      Vision support: {}", model.supports_vision());
         println!("      Tool support: {}", model.supports_tools());
@@ -214,17 +214,17 @@ async fn demonstrate_serialization() -> Result<()> {
 
     let json = serde_json::to_string_pretty(&params).map_err(|e| {
         anthropic_sdk::AnthropicError::Configuration {
-            message: format!("Serialization error: {}", e),
+            message: format!("Serialization error: {e}"),
         }
     })?;
 
     println!("   ✅ JSON serialization successful:");
-    println!("{}", json);
+    println!("{json}");
 
     // Verify it matches expected structure
     let json_value: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| anthropic_sdk::AnthropicError::Configuration {
-            message: format!("Deserialization error: {}", e),
+            message: format!("Deserialization error: {e}"),
         })?;
 
     println!("\n   🔍 Verification:");

@@ -630,7 +630,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut results = Vec::new();
 
     for (filename, mime_type, content) in demo_documents {
-        println!("Processing: {}", filename);
+        println!("Processing: {filename}");
 
         match service
             .process_document(content.as_bytes(), filename, mime_type)
@@ -659,7 +659,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 error!("❌ Failed to process {}: {}", filename, e);
-                println!("❌ Error processing {}: {}", filename, e);
+                println!("❌ Error processing {filename}: {e}");
             }
         }
 
@@ -696,9 +696,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total_file_size: usize = results.iter().map(|r| r.file_size).sum();
 
     println!("Documents processed: {}", results.len());
-    println!("Total processing time: {:?}", total_processing_time);
-    println!("Average processing time: {:?}", average_processing_time);
-    println!("Total data processed: {} bytes", total_file_size);
+    println!("Total processing time: {total_processing_time:?}");
+    println!("Average processing time: {average_processing_time:?}");
+    println!("Total data processed: {total_file_size} bytes");
     println!(
         "Throughput: {:.2} KB/s",
         (total_file_size as f64 / 1024.0) / total_processing_time.as_secs_f64()

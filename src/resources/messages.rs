@@ -417,8 +417,7 @@ mod tests {
         let temperature = json["temperature"].as_f64().unwrap();
         assert!(
             (temperature - 0.7).abs() < 0.001,
-            "Temperature should be close to 0.7, got {}",
-            temperature
+            "Temperature should be close to 0.7, got {temperature}"
         );
     }
 

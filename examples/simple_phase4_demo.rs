@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Hash verification if available
         if let Some(hash) = &file.hash {
-            println!("  Hash: {:.16}...", hash);
+            println!("  Hash: {hash:.16}...");
         }
         println!();
     }
@@ -115,10 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Pre-request cost estimation
     let estimated_cost = token_counter.estimate_cost("claude-3-5-sonnet-latest", 500, 200);
-    println!(
-        "💰 Estimated cost (500 input + 200 output): ${:.4}",
-        estimated_cost
-    );
+    println!("💰 Estimated cost (500 input + 200 output): ${estimated_cost:.4}");
 
     // Simulate API usage
     let usage = anthropic_sdk::types::Usage {
@@ -156,16 +153,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 drop(counter); // Release lock before async operation
 
                 if current_attempt < 3 {
-                    println!(
-                        "  Attempt {}: Simulating transient failure",
-                        current_attempt
-                    );
+                    println!("  Attempt {current_attempt}: Simulating transient failure");
                     Err(AnthropicError::HttpError {
                         status: 503,
                         message: "Service temporarily unavailable".to_string(),
                     })
                 } else {
-                    println!("  Attempt {}: Success!", current_attempt);
+                    println!("  Attempt {current_attempt}: Success!");
                     Ok("Operation completed successfully".to_string())
                 }
             }
@@ -173,8 +167,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     match result1 {
-        RetryResult::Success(msg) => println!("✅ Retry success: {}", msg),
-        RetryResult::Failed(error) => println!("❌ Retry failed: {}", error),
+        RetryResult::Success(msg) => println!("✅ Retry success: {msg}"),
+        RetryResult::Failed(error) => println!("❌ Retry failed: {error}"),
     }
 
     let final_attempt_count = *attempt_count.lock().unwrap();
@@ -188,8 +182,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     match result2 {
-        RetryResult::Success(msg) => println!("✅ Unexpected success: {}", msg),
-        RetryResult::Failed(error) => println!("✅ Correctly failed (non-retriable): {}", error),
+        RetryResult::Success(msg) => println!("✅ Unexpected success: {msg}"),
+        RetryResult::Failed(error) => println!("✅ Correctly failed (non-retriable): {error}"),
     }
 
     // Message integration with files
@@ -218,7 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nInfrastructure Status:");
     println!("  • Files processed: {}", processed_files.len());
-    println!("  • Retry attempts made: {}", final_attempt_count);
+    println!("  • Retry attempts made: {final_attempt_count}");
     println!("  • Cost estimation: Active");
     println!("  • File validation: Passed");
 

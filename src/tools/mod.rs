@@ -220,7 +220,7 @@ mod tests {
     impl ToolFunction for TestTool {
         async fn execute(&self, input: Value) -> Result<ToolResult, Box<dyn Error + Send + Sync>> {
             let message = input["message"].as_str().unwrap_or("Hello");
-            Ok(ToolResult::success("test_id", format!("Echo: {}", message)))
+            Ok(ToolResult::success("test_id", format!("Echo: {message}")))
         }
     }
 
@@ -244,10 +244,7 @@ mod tests {
             Box::pin(async move {
                 let number = input["number"].as_f64().unwrap_or(0.0);
                 let result = number * 2.0;
-                Ok(ToolResult::success(
-                    "test_id",
-                    format!("Result: {}", result),
-                ))
+                Ok(ToolResult::success("test_id", format!("Result: {result}")))
             })
         });
 
@@ -267,7 +264,7 @@ mod tests {
             let value = input["test"].as_str().unwrap_or("default");
             Ok(ToolResult::success(
                 "macro_test",
-                format!("Processed: {}", value),
+                format!("Processed: {value}"),
             ))
         });
     }

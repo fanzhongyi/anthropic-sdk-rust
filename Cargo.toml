@@ -93,3 +93,11 @@ default = []
 tokio-test = "0.4"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 chrono = "0.4"              # For time tool example
+
+[lints.clippy]
+print_in_format_strings = "warn"
+uninlined_format_args = "warn"
+warnings = "deny"  # -D warnings
+dead_code = "allow"  # -A dead_code
+unused_variables = "allow"  # -A unused_variables
+unnameable_test_items = "allow"  # -A unnameable-test-items

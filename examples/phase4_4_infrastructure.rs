@@ -18,10 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Estimate cost before making request
     let estimated_cost = counter.estimate_cost("claude-3-5-sonnet-latest", 1000, 500);
-    println!(
-        "💰 Estimated cost for 1000 input + 500 output tokens: ${:.4}",
-        estimated_cost
-    );
+    println!("💰 Estimated cost for 1000 input + 500 output tokens: ${estimated_cost:.4}");
 
     // Simulate some usage for demonstration
     let usage1 = anthropic_sdk::types::Usage {
@@ -36,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cost_breakdown = counter.record_usage("claude-3-5-sonnet-latest", &usage1);
     println!("\n📈 Cost Breakdown:");
-    println!("{}", cost_breakdown);
+    println!("{cost_breakdown}");
 
     // Retry System Demo
     println!("\n\n🔄 Retry System");
@@ -73,14 +70,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     match result1 {
-        RetryResult::Success(value) => println!("  ✅ {}", value),
-        RetryResult::Failed(error) => println!("  ❌ {}", error),
+        RetryResult::Success(value) => println!("  ✅ {value}"),
+        RetryResult::Failed(error) => println!("  ❌ {error}"),
     }
 
     // Get usage summary
     let summary = counter.get_summary();
     println!("\n📊 Usage Summary:");
-    println!("{}", summary);
+    println!("{summary}");
 
     println!("\n✨ Phase 4.4 Infrastructure Demo Complete!");
     println!("🚀 Token counting and retry system working perfectly!");

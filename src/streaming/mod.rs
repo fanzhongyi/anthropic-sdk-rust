@@ -413,8 +413,7 @@ impl MessageStream {
                     Err(err) => on_result(crate::types::ToolResult {
                         tool_use_id: tool_use.id.clone(),
                         content: crate::types::ToolResultContent::Text(format!(
-                            "Execution error: {}",
-                            err
+                            "Execution error: {err}"
                         )),
                         is_error: Some(true),
                     }),

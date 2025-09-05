@@ -234,10 +234,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Estimate costs for hypothetical API calls
     let estimated_cost = token_counter.estimate_cost("claude-3-5-sonnet-latest", 500, 200);
-    println!(
-        "💰 Estimated cost for 500 input + 200 output tokens: ${:.4}",
-        estimated_cost
-    );
+    println!("💰 Estimated cost for 500 input + 200 output tokens: ${estimated_cost:.4}");
 
     // Simulate some usage
     let usage = anthropic_sdk::types::Usage {

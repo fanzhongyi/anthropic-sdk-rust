@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         csv_file
             .hash
             .as_ref()
-            .map(|h| format!("{:.8}...", h))
+            .map(|h| format!("{h:.8}..."))
             .unwrap_or("none".to_string())
     );
 
@@ -109,12 +109,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Validate files against constraints
     match image_file.validate(&image_constraints) {
         Ok(_) => println!("✅ Image file passed validation"),
-        Err(e) => println!("❌ Image file failed validation: {}", e),
+        Err(e) => println!("❌ Image file failed validation: {e}"),
     }
 
     match text_file.validate(&text_constraints) {
         Ok(_) => println!("✅ Text file passed validation"),
-        Err(e) => println!("❌ Text file failed validation: {}", e),
+        Err(e) => println!("❌ Text file failed validation: {e}"),
     }
 
     // Test constraint violations
@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match large_file.validate(&text_constraints) {
         Ok(_) => println!("❌ Large file unexpectedly passed validation"),
-        Err(e) => println!("✅ Large file correctly failed validation: {}", e),
+        Err(e) => println!("✅ Large file correctly failed validation: {e}"),
     }
 
     // Scenario 3: MIME type detection
@@ -148,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (filename, expected_mime) in test_files {
         let expected: mime::Mime = expected_mime.parse().unwrap();
-        println!("  {} -> {}", filename, expected);
+        println!("  {filename} -> {expected}");
     }
 
     // Scenario 4: File processing utilities
@@ -168,7 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Format conversion
     println!("\nFormat conversion:");
     let text_as_base64 = text_file.to_base64().await?;
-    println!("  Text file as base64: {:.50}...", text_as_base64);
+    println!("  Text file as base64: {text_as_base64:.50}...");
 
     let image_as_bytes = image_file.to_bytes().await?;
     println!("  Image file as bytes: {} bytes", image_as_bytes.len());
@@ -241,9 +241,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let processing_time = start_time.elapsed();
 
     println!("Performance metrics:");
-    println!("  Files processed: {}", total_files);
-    println!("  Total data size: {} bytes", total_size);
-    println!("  Processing time: {:?}", processing_time);
+    println!("  Files processed: {total_files}");
+    println!("  Total data size: {total_size} bytes");
+    println!("  Processing time: {processing_time:?}");
     println!(
         "  Throughput: {:.2} MB/s",
         (total_size as f64 / 1024.0 / 1024.0) / processing_time.as_secs_f64()
@@ -272,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for (type_name, file) in all_files {
-        println!("{} File:", type_name);
+        println!("{type_name} File:");
         println!("  Name: {}", file.name);
         println!("  Size: {} bytes", file.size);
         println!("  MIME: {}", file.mime_type);

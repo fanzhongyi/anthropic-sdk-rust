@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn test_event_handler_debug() {
         let handler = EventHandler::Text(Box::new(|_, _| {}));
-        let debug_str = format!("{:?}", handler);
+        let debug_str = format!("{handler:?}");
         assert!(debug_str.contains("Text"));
         assert!(debug_str.contains("<callback>"));
     }

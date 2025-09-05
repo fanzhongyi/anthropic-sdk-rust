@@ -183,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_url =
         env::var("CUSTOM_BASE_URL").expect("⚠️  No base URL found. Please set CUSTOM_BASE_URL");
 
-    println!("📡 Testing Custom Gateway: {}", base_url);
+    println!("📡 Testing Custom Gateway: {base_url}");
 
     // Test different authentication methods
     let custom_client = CustomAnthropicClient::new(api_key.clone(), base_url.to_string());

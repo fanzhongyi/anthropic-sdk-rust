@@ -297,7 +297,7 @@ mod tests {
             input: serde_json::Value,
         ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
             let message = input["message"].as_str().unwrap_or("No message");
-            Ok(ToolResult::success("test_id", format!("Echo: {}", message)))
+            Ok(ToolResult::success("test_id", format!("Echo: {message}")))
         }
     }
 

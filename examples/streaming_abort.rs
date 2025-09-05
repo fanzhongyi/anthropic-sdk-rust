@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Consume some text and then await final result; should return UserAbort
     let result = stream
         .on_text(|delta, _| {
-            print!("{}", delta);
+            print!("{delta}");
         })
         .final_message()
         .await;
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             );
         }
         Err(other) => {
-            println!("\n❌ Unexpected error: {}", other);
+            println!("\n❌ Unexpected error: {other}");
         }
     }
 
